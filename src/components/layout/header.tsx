@@ -9,10 +9,6 @@ export function Header() {
 
   const navItems = [
     { href: '/', label: 'Home' },
-    { href: '/about', label: 'About' },
-    { href: '/features', label: 'Features' },
-    { href: '/api-test', label: 'API Test' },
-    { href: '/contact', label: 'Contact' },
   ];
 
   return (
@@ -33,7 +29,7 @@ export function Header() {
                 d="M13 10V3L4 14h7v7l9-11h-7z"
               />
             </svg>
-            <span className="font-bold text-xl">CloudNext</span>
+            <span className="font-bold text-xl">Farcaster Mini App</span>
           </Link>
           
           <nav className="hidden md:flex items-center gap-6">

@@ -2,6 +2,7 @@
 
 import { ThemeProvider } from 'next-themes';
 import { ReactNode } from 'react';
+import { FarcasterProvider } from '@/components/providers/farcaster-provider';
 
 interface ProvidersProps {
   children: ReactNode;
@@ -15,7 +16,9 @@ export function Providers({ children }: ProvidersProps) {
       enableSystem
       disableTransitionOnChange
     >
-      {children}
+      <FarcasterProvider>
+        {children}
+      </FarcasterProvider>
     </ThemeProvider>
   );
 }
