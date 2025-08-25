@@ -159,15 +159,105 @@ jobs:
           echo "🔧 Generating Farcaster account association for domain: $NEXT_PUBLIC_APP_DOMAIN"
           node scripts/generate-farcaster-account-association.js generate
 
-      - name: "🎨 Generate Flux images"
+      - name: "⏳ Wait for Cloudflare Pages deployment"
+        id: wait-cloudflare
+        run: |
+          echo "⏳ Waiting for Cloudflare Pages deployment to complete..."
+          
+          # Get the current workflow run ID that triggered this
+          CURRENT_RUN_ID="${{ github.run_id }}"
+          
+          # Function to check workflow status
+          check_workflow_status() {
+            local run_id=$1
+            local status=$(gh api repos/${{ github.repository }}/actions/runs/$run_id --jq '.status')
+            local conclusion=$(gh api repos/${{ github.repository }}/actions/runs/$run_id --jq '.conclusion')
+            echo "Run $run_id: status=$status, conclusion=$conclusion"
+            
+            if [[ "$status" == "completed" ]]; then
+              if [[ "$conclusion" == "success" ]]; then
+                return 0  # Success
+              else
+                return 2  # Failed
+              fi
+            else
+              return 1  # Still running
+            fi
+          }
+          
+          # Find the Cloudflare Pages workflow run for this commit
+          CLOUDFLARE_RUN_ID=$(gh api repos/${{ github.repository }}/actions/runs \
+            --jq '.workflow_runs[] | select(.head_sha == "${{ github.sha }}" and .name == "🚀 Deploy to Cloudflare Pages") | .id' | head -1)
+          
+          if [[ -z "$CLOUDFLARE_RUN_ID" ]]; then
+            echo "❌ Could not find Cloudflare Pages workflow run"
+            exit 1
+          fi
+          
+          echo "📍 Found Cloudflare Pages workflow run: $CLOUDFLARE_RUN_ID"
+          
+          # Poll every 10 seconds for up to 10 minutes
+          MAX_ATTEMPTS=60
+          ATTEMPT=0
+          
+          while [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "🔍 Check $ATTEMPT/$MAX_ATTEMPTS..."
+            
+            if check_workflow_status $CLOUDFLARE_RUN_ID; then
+              echo "✅ Cloudflare Pages deployment completed successfully!"
+              
+              # Get the worker name from the Cloudflare workflow logs
+              WORKER_NAME=$(gh api repos/${{ github.repository }}/actions/runs/$CLOUDFLARE_RUN_ID/jobs \
+                --jq '.jobs[0].steps[] | select(.name | contains("generate-worker-name")) | .conclusion' 2>/dev/null || echo "")
+              
+              # Fallback to constructing worker name from repo info
+              if [[ -z "$WORKER_NAME" ]]; then
+                REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+                WORKER_NAME="$REPO_NAME-$(echo "${{ github.sha }}" | cut -c1-8)"
+                echo "🔧 Using constructed worker name: $WORKER_NAME"
+              fi
+              
+              # Set the deployment URL
+              DEPLOYMENT_URL="https://${WORKER_NAME}.workers.dev"
+              echo "🔗 Cloudflare deployment URL: $DEPLOYMENT_URL"
+              echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+              break
+            else
+              case $? in
+                1)
+                  echo "⏳ Cloudflare deployment still running..."
+                  sleep 10
+                  ;;
+                2)
+                  echo "❌ Cloudflare deployment failed!"
+                  exit 1
+                  ;;
+              esac
+            fi
+          done
+          
+          if [[ $ATTEMPT -ge $MAX_ATTEMPTS ]]; then
+            echo "⏰ Timeout waiting for Cloudflare deployment"
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "🎨 Generate AI icon"
         env:
           TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
-          NEXT_PUBLIC_APP_DOMAIN: https://${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
-          FLUX_GENERATION_DELAY: ${{ secrets.FLUX_GENERATION_DELAY }}
+        run: |
+          echo "🎨 Generating AI icon using Flux API"
+          node scripts/generate-flux-icon.js
+
+      - name: "📸 Generate screenshots"
+        env:
+          NEXT_PUBLIC_APP_DOMAIN: ${{ steps.wait-cloudflare.outputs.deployment_url }}
           BROWSERLESS_API_URL: ${{ secrets.BROWSERLESS_API_URL }}
         run: |
-          echo "🎨 Generating Flux images for the application"
-          node scripts/generate-flux-images.js
+          echo "📸 Generating screenshots from deployment: $NEXT_PUBLIC_APP_DOMAIN"
+          node scripts/generate-screenshots.js
 
       - name: "🏗️ Build application"
         run: pnpm run build
