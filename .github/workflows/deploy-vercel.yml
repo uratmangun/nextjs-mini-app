@@ -187,7 +187,7 @@ jobs:
           
           # Find the Cloudflare Pages workflow run for this commit
           CLOUDFLARE_RUN_ID=$(gh api repos/${{ github.repository }}/actions/runs \
-            --jq '.workflow_runs[] | select(.head_sha == "${{ github.sha }}" and .name == "🚀 Deploy to Cloudflare Pages") | .id' | head -1)
+            --jq '.workflow_runs[] | select(.head_sha == "${{ github.sha }}" and .name == "Deploy to Cloudflare Pages") | .id' | head -1)
           
           if [[ -z "$CLOUDFLARE_RUN_ID" ]]; then
             echo "❌ Could not find Cloudflare Pages workflow run"
