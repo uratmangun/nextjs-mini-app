@@ -50,7 +50,6 @@ jobs:
         id: cleanup-projects
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
         run: |
           # Get repository name for pattern matching
           REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
@@ -109,7 +108,6 @@ jobs:
         id: generate-vercel-project
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
         run: |
           # Get repository name
           REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
