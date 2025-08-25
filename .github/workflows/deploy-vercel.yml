@@ -226,11 +226,23 @@ jobs:
 
       - name: "📸 Generate screenshots"
         env:
-          SCREENSHOT_URL: ${{ steps.deploy-temp.outputs.deployment_url }}
-          NEXT_PUBLIC_APP_DOMAIN: ${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
           BROWSERLESS_API_URL: ${{ secrets.BROWSERLESS_API_URL }}
         run: |
-          echo "📸 Generating screenshots from deployment: $NEXT_PUBLIC_APP_DOMAIN"
+          # Extract clean project name from deployment URL
+          DEPLOYMENT_URL="${{ steps.deploy-temp.outputs.deployment_url }}"
+          BASE_PROJECT_NAME=$(echo "$DEPLOYMENT_URL" | sed 's|https://||' | sed 's|\.vercel\.app.*||' | sed 's|-[a-z0-9]*$||')
+          
+          # Use clean domain format
+          CLEAN_DOMAIN="${BASE_PROJECT_NAME}.vercel.app"
+          CLEAN_URL="https://${CLEAN_DOMAIN}"
+          
+          echo "📸 Generating screenshots from deployment: $CLEAN_DOMAIN"
+          echo "Using clean URL: $CLEAN_URL"
+          
+          # Export for the script
+          export SCREENSHOT_URL="$CLEAN_URL"
+          export NEXT_PUBLIC_APP_DOMAIN="$CLEAN_DOMAIN"
+          
           node scripts/generate-screenshots.js
 
       - name: "🏗️ Build application"
