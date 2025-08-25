@@ -207,9 +207,16 @@ jobs:
             if check_workflow_status $CLOUDFLARE_RUN_ID; then
               echo "✅ Cloudflare Pages deployment completed successfully!"
               
-              # Get the worker name from the Cloudflare workflow logs
+              # Get the worker name from the Cloudflare workflow step outputs
               WORKER_NAME=$(gh api repos/${{ github.repository }}/actions/runs/$CLOUDFLARE_RUN_ID/jobs \
-                --jq '.jobs[0].steps[] | select(.name | contains("generate-worker-name")) | .conclusion' 2>/dev/null || echo "")
+                --jq '.jobs[0].steps[] | select(.name | contains("generate-worker-name")) | .outputs.worker_name' 2>/dev/null || echo "")
+              
+              # Alternative: extract from job logs if outputs not available
+              if [[ -z "$WORKER_NAME" ]]; then
+                echo "🔍 Extracting worker name from workflow logs..."
+                WORKER_NAME=$(gh api repos/${{ github.repository }}/actions/runs/$CLOUDFLARE_RUN_ID/logs \
+                  | grep -o "worker_name=[a-z0-9-]*" | cut -d'=' -f2 | tail -1 || echo "")
+              fi
               
               # Fallback to constructing worker name from repo info
               if [[ -z "$WORKER_NAME" ]]; then
@@ -218,8 +225,8 @@ jobs:
                 echo "🔧 Using constructed worker name: $WORKER_NAME"
               fi
               
-              # Set the deployment URL
-              DEPLOYMENT_URL="https://${WORKER_NAME}.workers.dev"
+              # Set the deployment URL with custom domain
+              DEPLOYMENT_URL="https://${WORKER_NAME}.uratmangun.workers.dev"
               echo "🔗 Cloudflare deployment URL: $DEPLOYMENT_URL"
               echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
               break
