@@ -36,13 +36,6 @@ jobs:
       - name: "🧪 Type check"
         run: pnpm run type-check
 
-      - name: "🏗️ Build application"
-        run: pnpm run build
-        env:
-          NODE_ENV: production
-          NEXT_TELEMETRY_DISABLED: 1
-          NODE_OPTIONS: "--max-old-space-size=4096"
-
       - name: "🛠️ Install Vercel CLI"
         run: pnpm add -g vercel@latest
 
@@ -156,6 +149,45 @@ jobs:
             exit 1
           fi
 
+      - name: "🔑 Generate Farcaster account association"
+        env:
+          NEXT_PUBLIC_APP_DOMAIN: https://${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
+          FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
+          FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
+          FARCASTER_CUSTODY_PRIVATE_KEY: ${{ secrets.FARCASTER_CUSTODY_PRIVATE_KEY }}
+        run: |
+          echo "🔧 Generating Farcaster account association for domain: $NEXT_PUBLIC_APP_DOMAIN"
+          node scripts/generate-farcaster-account-association.js generate
+
+      - name: "🎨 Generate Flux images"
+        env:
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          NEXT_PUBLIC_APP_DOMAIN: https://${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
+          FLUX_GENERATION_DELAY: ${{ secrets.FLUX_GENERATION_DELAY }}
+        run: |
+          echo "🎨 Generating Flux images for the application"
+          node scripts/generate-flux-images.js
+
+      - name: "🏗️ Build application"
+        run: pnpm run build
+        env:
+          NODE_ENV: production
+          NEXT_TELEMETRY_DISABLED: 1
+          NODE_OPTIONS: "--max-old-space-size=4096"
+          NEXT_PUBLIC_APP_DOMAIN: https://${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
+          # Pass all Farcaster and API configuration for build-time generation
+          FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
+          FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
+          FARCASTER_CUSTODY_PRIVATE_KEY: ${{ secrets.FARCASTER_CUSTODY_PRIVATE_KEY }}
+          FARCASTER_APP_NAME: ${{ secrets.FARCASTER_APP_NAME }}
+          FARCASTER_APP_BUTTON_TITLE: ${{ secrets.FARCASTER_APP_BUTTON_TITLE }}
+          FARCASTER_APP_DESCRIPTION: ${{ secrets.FARCASTER_APP_DESCRIPTION }}
+          FARCASTER_SPLASH_BACKGROUND_COLOR: ${{ secrets.FARCASTER_SPLASH_BACKGROUND_COLOR }}
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FARCASTER_WEBHOOK_SECRET: ${{ secrets.FARCASTER_WEBHOOK_SECRET }}
+          FLUX_GENERATION_DELAY: ${{ secrets.FLUX_GENERATION_DELAY }}
+
       - name: "🚀 Deploy to Vercel (Production)"
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         env:
@@ -164,7 +196,7 @@ jobs:
           FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
           FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
           FARCASTER_CUSTODY_PRIVATE_KEY: ${{ secrets.FARCASTER_CUSTODY_PRIVATE_KEY }}
-          NEXT_PUBLIC_APP_DOMAIN: ${{ secrets.NEXT_PUBLIC_APP_DOMAIN }}
+          NEXT_PUBLIC_APP_DOMAIN: https://${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
           # App Metadata
           FARCASTER_APP_NAME: ${{ secrets.FARCASTER_APP_NAME }}
           FARCASTER_APP_BUTTON_TITLE: ${{ secrets.FARCASTER_APP_BUTTON_TITLE }}
@@ -227,7 +259,7 @@ jobs:
           FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
           FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
           FARCASTER_CUSTODY_PRIVATE_KEY: ${{ secrets.FARCASTER_CUSTODY_PRIVATE_KEY }}
-          NEXT_PUBLIC_APP_DOMAIN: ${{ secrets.NEXT_PUBLIC_APP_DOMAIN }}
+          NEXT_PUBLIC_APP_DOMAIN: https://${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
           # App Metadata
           FARCASTER_APP_NAME: ${{ secrets.FARCASTER_APP_NAME }}
           FARCASTER_APP_BUTTON_TITLE: ${{ secrets.FARCASTER_APP_BUTTON_TITLE }}
