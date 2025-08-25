@@ -30,10 +30,8 @@ const nextConfig = {
             key: 'X-XSS-Protection',
             value: '1; mode=block'
           },
-          {
-            key: 'X-Frame-Options',
-            value: 'SAMEORIGIN'
-          },
+          // X-Frame-Options removed to allow embedding in Farcaster clients
+          // Mini apps need to be displayed in iframes within Farcaster
           {
             key: 'X-Content-Type-Options',
             value: 'nosniff'

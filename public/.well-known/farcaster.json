@@ -1,18 +1,27 @@
 {
   "accountAssociation": {
-    "header": "eyJmaWQiOjEsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHgwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwIn0",
-    "payload": "eyJkb21haW4iOiJleGFtcGxlLmNvbSJ9",
-    "signature": "MHgwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMA"
+    "header": "eyJmaWQiOjMzNDg0MSwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDcwYzhmNzU5YzdEMzlEQ0JjMzM0NWJDQ2FkNDBDOTJCOEM4NUJjZDMifQ",
+    "payload": "eyJkb21haW4iOiJiYWY5OWVhMDliMzgubmdyb2suYXBwIn0",
+    "signature": "MHhjMzEzYmI4Yzc5YTY4MTczZWM0MDA4ZWIzYWRkYTBmOTk1ZGM1ZTgxMzIxNzViMDNiNDBiY2FiNTRiNTc2ZmUwMzNkM2JjNzNkYjkzY2QxNTVkY2M0NWVhNDQ3NGQ3Y2RhNTBkYmZjNGQ2OTU3YWZjOWNhMGE1ZmQwNTllMWQxYjFj"
   },
   "miniapp": {
     "version": "1",
-    "name": "Farcaster Mini App",
-    "iconUrl": "https://example.com/icon.png",
-    "homeUrl": "https://example.com",
-    "imageUrl": "https://example.com/og-image.png",
+    "name": "Next.js Mini App",
+    "iconUrl": "https://baf99ea09b38.ngrok.app/images/flux-icon-2025-08-23T22-30-03-334Z.png",
+    "homeUrl": "https://baf99ea09b38.ngrok.app",
+    "imageUrl": "https://baf99ea09b38.ngrok.app/images/flux-embed-2025-08-23T22-31-50-065Z.png",
     "buttonTitle": "Launch App",
-    "splashImageUrl": "https://example.com/splash.png",
+    "splashImageUrl": "https://baf99ea09b38.ngrok.app/images/flux-splash-2025-08-23T22-35-17-563Z.png",
     "splashBackgroundColor": "#0ea5e9",
-    "webhookUrl": "https://example.com/api/webhook"
+    "webhookUrl": "https://baf99ea09b38.ngrok.app/api/webhook",
+    "subtitle": "A Next.js Farcaster Mini App",
+    "description": "Built with Next.js, deployed on Cloudflare Pages",
+    "primaryCategory": "productivity",
+    "tags": [
+      "nextjs",
+      "farcaster",
+      "web3",
+      "cloudflare"
+    ]
   }
 }

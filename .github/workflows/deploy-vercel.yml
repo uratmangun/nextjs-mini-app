@@ -1,0 +1,242 @@
+name: Deploy to Vercel
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Type check
+        run: pnpm run type-check
+
+      - name: Build application
+        run: pnpm run build
+        env:
+          NODE_ENV: production
+          NEXT_TELEMETRY_DISABLED: 1
+          NODE_OPTIONS: "--max-old-space-size=4096"
+
+      - name: Check and delete existing matching Vercel projects
+        id: cleanup-projects
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        run: |
+          # Get repository name for pattern matching
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          REPO_PATTERN="${REPO_NAME}-"
+          
+          echo "========================================="
+          echo "Cleaning up existing Vercel projects"
+          echo "Pattern: ${REPO_PATTERN}*"
+          echo "========================================="
+          
+          # Install Vercel CLI
+          npm install -g vercel@latest
+          
+          # List all Vercel projects
+          PROJECTS=$(curl -s -X GET \
+            "https://api.vercel.com/v9/projects?teamId=${VERCEL_ORG_ID}" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Content-Type: application/json")
+          
+          # Extract project names that match the pattern
+          MATCHING_PROJECTS=$(echo "$PROJECTS" | jq -r ".projects[] | select(.name | startswith(\"${REPO_PATTERN}\")) | .name" || true)
+          
+          if [ -n "$MATCHING_PROJECTS" ]; then
+            echo "Found matching Vercel projects to delete:"
+            echo "$MATCHING_PROJECTS"
+            echo ""
+            
+            # Delete each matching project
+            while IFS= read -r PROJECT; do
+              if [ -n "$PROJECT" ]; then
+                echo "Deleting Vercel project: $PROJECT"
+                DELETE_RESPONSE=$(curl -s -X DELETE \
+                  "https://api.vercel.com/v9/projects/${PROJECT}?teamId=${VERCEL_ORG_ID}" \
+                  -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+                  -H "Content-Type: application/json")
+                
+                # Check if deletion was successful (Vercel API returns empty response on success)
+                if [ -z "$DELETE_RESPONSE" ] || [ "$DELETE_RESPONSE" = "{}" ]; then
+                  echo "✓ Successfully deleted Vercel project: $PROJECT"
+                else
+                  echo "⚠ Warning: Failed to delete Vercel project: $PROJECT"
+                  echo "Response: $DELETE_RESPONSE"
+                fi
+              fi
+            done <<< "$MATCHING_PROJECTS"
+          else
+            echo "No existing Vercel projects found matching pattern: ${REPO_PATTERN}*"
+          fi
+          
+          echo ""
+          echo "========================================="
+          echo "Cleanup complete"
+          echo "========================================="
+
+      - name: Generate Vercel project name and create project
+        id: generate-vercel-project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        run: |
+          # Get repository name
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          
+          # Generate random alphanumeric string
+          RANDOM_STRING=$(openssl rand -hex 8 | tr -d '\n')
+          
+          # Combine repository name with random string
+          PROJECT_NAME="${REPO_NAME}-${RANDOM_STRING}"
+          
+          # Ensure minimum length of 26 characters
+          while [ ${#PROJECT_NAME} -lt 26 ]; do
+            EXTRA_CHARS=$(openssl rand -hex 2 | tr -d '\n')
+            PROJECT_NAME="${PROJECT_NAME}${EXTRA_CHARS}"
+          done
+          
+          # Ensure project name is valid (lowercase, alphanumeric, hyphens only)
+          PROJECT_NAME=$(echo "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
+          
+          echo "Generated project name: $PROJECT_NAME"
+          
+          # Create new Vercel project
+          CREATE_RESPONSE=$(curl -s -X POST \
+            "https://api.vercel.com/v9/projects?teamId=${VERCEL_ORG_ID}" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"name\": \"$PROJECT_NAME\",
+              \"framework\": \"nextjs\"
+            }")
+          
+          PROJECT_ID=$(echo "$CREATE_RESPONSE" | jq -r '.id')
+          
+          if [ "$PROJECT_ID" != "null" ] && [ -n "$PROJECT_ID" ]; then
+            echo "✓ Successfully created Vercel project: $PROJECT_NAME"
+            echo "Project ID: $PROJECT_ID"
+            echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
+            echo "project_id=$PROJECT_ID" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Failed to create Vercel project"
+            echo "Response: $CREATE_RESPONSE"
+            exit 1
+          fi
+
+      - name: Deploy to Vercel (Production)
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ steps.generate-vercel-project.outputs.project_id }}
+          vercel-args: '--prod'
+          working-directory: ./
+        env:
+          # Farcaster Configuration
+          FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
+          FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
+          FARCASTER_CUSTODY_PRIVATE_KEY: ${{ secrets.FARCASTER_CUSTODY_PRIVATE_KEY }}
+          NEXT_PUBLIC_APP_DOMAIN: ${{ secrets.NEXT_PUBLIC_APP_DOMAIN }}
+          # App Metadata
+          FARCASTER_APP_NAME: ${{ secrets.FARCASTER_APP_NAME }}
+          FARCASTER_APP_BUTTON_TITLE: ${{ secrets.FARCASTER_APP_BUTTON_TITLE }}
+          FARCASTER_APP_DESCRIPTION: ${{ secrets.FARCASTER_APP_DESCRIPTION }}
+          FARCASTER_SPLASH_BACKGROUND_COLOR: ${{ secrets.FARCASTER_SPLASH_BACKGROUND_COLOR }}
+          # API Keys
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Optional Configuration
+          FARCASTER_WEBHOOK_SECRET: ${{ secrets.FARCASTER_WEBHOOK_SECRET }}
+          FLUX_GENERATION_DELAY: ${{ secrets.FLUX_GENERATION_DELAY }}
+
+      - name: Update repository homepage URL
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PAT_TOKEN }}
+          script: |
+            const projectName = '${{ steps.generate-vercel-project.outputs.project_name }}';
+            const homepageUrl = `https://${projectName}.vercel.app`;
+            
+            console.log(`Updating repository homepage to: ${homepageUrl}`);
+            
+            try {
+              await github.rest.repos.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                homepage: homepageUrl
+              });
+              console.log('Successfully updated repository homepage URL');
+            } catch (error) {
+              console.error('Failed to update repository homepage URL:', error);
+              // Don't fail the workflow if homepage update fails
+            }
+
+      - name: Deploy to Vercel (Preview)
+        if: github.event_name == 'pull_request'
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ steps.generate-vercel-project.outputs.project_id }}
+          working-directory: ./
+        env:
+          # Farcaster Configuration
+          FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
+          FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
+          FARCASTER_CUSTODY_PRIVATE_KEY: ${{ secrets.FARCASTER_CUSTODY_PRIVATE_KEY }}
+          NEXT_PUBLIC_APP_DOMAIN: ${{ secrets.NEXT_PUBLIC_APP_DOMAIN }}
+          # App Metadata
+          FARCASTER_APP_NAME: ${{ secrets.FARCASTER_APP_NAME }}
+          FARCASTER_APP_BUTTON_TITLE: ${{ secrets.FARCASTER_APP_BUTTON_TITLE }}
+          FARCASTER_APP_DESCRIPTION: ${{ secrets.FARCASTER_APP_DESCRIPTION }}
+          FARCASTER_SPLASH_BACKGROUND_COLOR: ${{ secrets.FARCASTER_SPLASH_BACKGROUND_COLOR }}
+          # API Keys
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Optional Configuration
+          FARCASTER_WEBHOOK_SECRET: ${{ secrets.FARCASTER_WEBHOOK_SECRET }}
+          FLUX_GENERATION_DELAY: ${{ secrets.FLUX_GENERATION_DELAY }}
+
+      - name: Comment deployment URL
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const deployment = process.env.VERCEL_URL || 'Deployment pending...';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ Vercel preview deployment ready!\n\n🔗 https://${deployment}`
+            })

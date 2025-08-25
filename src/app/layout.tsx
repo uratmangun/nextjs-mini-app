@@ -5,6 +5,35 @@ import { Providers } from '@/components/providers';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 
+// Read farcaster config at build time
+const getFarcasterConfig = () => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const configPath = path.join(process.cwd(), 'public/.well-known/farcaster.json');
+    const configContent = fs.readFileSync(configPath, 'utf8');
+    return JSON.parse(configContent);
+  } catch (error) {
+    // Fallback config if file read fails
+    return {
+      miniapp: {
+        name: 'Next.js Mini App',
+        buttonTitle: 'Launch App',
+        homeUrl: process.env.NEXT_PUBLIC_APP_DOMAIN || 'https://example.com',
+        imageUrl: process.env.NEXT_PUBLIC_APP_DOMAIN 
+          ? `https://${process.env.NEXT_PUBLIC_APP_DOMAIN}/og-image.png`
+          : 'https://example.com/og-image.png',
+        splashImageUrl: process.env.NEXT_PUBLIC_APP_DOMAIN 
+          ? `https://${process.env.NEXT_PUBLIC_APP_DOMAIN}/splash.png`
+          : 'https://example.com/splash.png',
+        splashBackgroundColor: '#0ea5e9'
+      }
+    };
+  }
+};
+
+const farcasterConfig = getFarcasterConfig();
+
 const inter = Inter({ 
   subsets: ['latin'],
   display: 'swap',
@@ -55,6 +84,38 @@ export const metadata: Metadata = {
     icon: '/favicon.ico',
     shortcut: '/favicon-16x16.png',
     apple: '/apple-touch-icon.png',
+  },
+  other: {
+    // Farcaster Mini App metadata for sharing
+    'fc:miniapp': JSON.stringify({
+      version: '1',
+      imageUrl: farcasterConfig.miniapp.imageUrl,
+      button: {
+        title: farcasterConfig.miniapp.buttonTitle,
+        action: {
+          type: 'launch_miniapp',
+          name: farcasterConfig.miniapp.name,
+          url: farcasterConfig.miniapp.homeUrl,
+          splashImageUrl: farcasterConfig.miniapp.splashImageUrl,
+          splashBackgroundColor: farcasterConfig.miniapp.splashBackgroundColor
+        }
+      }
+    }),
+    // Backward compatibility with Frames v2
+    'fc:frame': JSON.stringify({
+      version: '1',
+      imageUrl: farcasterConfig.miniapp.imageUrl,
+      button: {
+        title: farcasterConfig.miniapp.buttonTitle,
+        action: {
+          type: 'launch_frame',
+          name: farcasterConfig.miniapp.name,
+          url: farcasterConfig.miniapp.homeUrl,
+          splashImageUrl: farcasterConfig.miniapp.splashImageUrl,
+          splashBackgroundColor: farcasterConfig.miniapp.splashBackgroundColor
+        }
+      }
+    })
   },
 };
 
