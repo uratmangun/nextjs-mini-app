@@ -63,7 +63,7 @@ jobs:
           
           # List all Vercel projects
           PROJECTS=$(curl -s -X GET \
-            "https://api.vercel.com/v9/projects?teamId=${VERCEL_ORG_ID}" \
+            "https://api.vercel.com/v9/projects" \
             -H "Authorization: Bearer ${VERCEL_TOKEN}" \
             -H "Content-Type: application/json")
           
@@ -80,7 +80,7 @@ jobs:
               if [ -n "$PROJECT" ]; then
                 echo "Deleting Vercel project: $PROJECT"
                 DELETE_RESPONSE=$(curl -s -X DELETE \
-                  "https://api.vercel.com/v9/projects/${PROJECT}?teamId=${VERCEL_ORG_ID}" \
+                  "https://api.vercel.com/v9/projects/${PROJECT}" \
                   -H "Authorization: Bearer ${VERCEL_TOKEN}" \
                   -H "Content-Type: application/json")
                 
@@ -133,7 +133,7 @@ jobs:
           
           # Create new Vercel project
           CREATE_RESPONSE=$(curl -s -X POST \
-            "https://api.vercel.com/v9/projects?teamId=${VERCEL_ORG_ID}" \
+            "https://api.vercel.com/v9/projects" \
             -H "Authorization: Bearer ${VERCEL_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "{
