@@ -208,22 +208,37 @@ jobs:
               echo "✅ Cloudflare Pages deployment completed successfully!"
               
               # Get the worker name from the Cloudflare workflow step outputs
-              WORKER_NAME=$(gh api repos/${{ github.repository }}/actions/runs/$CLOUDFLARE_RUN_ID/jobs \
-                --jq '.jobs[0].steps[] | select(.name | contains("generate-worker-name")) | .outputs.worker_name' 2>/dev/null || echo "")
+              echo "🔍 Extracting worker name from Cloudflare workflow..."
               
-              # Alternative: extract from job logs if outputs not available
+              # Get job ID for the generate-worker-name step
+              JOB_DATA=$(gh api repos/${{ github.repository }}/actions/runs/$CLOUDFLARE_RUN_ID/jobs --jq '.jobs[0]')
+              JOB_ID=$(echo "$JOB_DATA" | jq -r '.id')
+              
+              # Extract worker name from step outputs
+              WORKER_NAME=$(echo "$JOB_DATA" | jq -r '.steps[] | select(.name | contains("generate-worker-name")) | .outputs.worker_name // empty' 2>/dev/null || echo "")
+              
+              # Alternative: extract from job logs using the specific log pattern
               if [[ -z "$WORKER_NAME" ]]; then
-                echo "🔍 Extracting worker name from workflow logs..."
-                WORKER_NAME=$(gh api repos/${{ github.repository }}/actions/runs/$CLOUDFLARE_RUN_ID/logs \
+                echo "🔍 Extracting worker name from job logs..."
+                WORKER_NAME=$(gh api repos/${{ github.repository }}/actions/jobs/$JOB_ID/logs \
+                  | grep "Generated worker name:" | sed 's/.*Generated worker name: //' | tail -1 || echo "")
+              fi
+              
+              # Another fallback: look for the GITHUB_OUTPUT pattern
+              if [[ -z "$WORKER_NAME" ]]; then
+                echo "🔍 Looking for worker_name in GITHUB_OUTPUT..."
+                WORKER_NAME=$(gh api repos/${{ github.repository }}/actions/jobs/$JOB_ID/logs \
                   | grep -o "worker_name=[a-z0-9-]*" | cut -d'=' -f2 | tail -1 || echo "")
               fi
               
-              # Fallback to constructing worker name from repo info
+              # Fail if worker name cannot be extracted from Cloudflare workflow
               if [[ -z "$WORKER_NAME" ]]; then
-                REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
-                WORKER_NAME="$REPO_NAME-$(echo "${{ github.sha }}" | cut -c1-8)"
-                echo "🔧 Using constructed worker name: $WORKER_NAME"
+                echo "❌ Failed to extract worker name from Cloudflare workflow"
+                echo "   Worker name is required for screenshot generation"
+                exit 1
               fi
+              
+              echo "✅ Worker name extracted: $WORKER_NAME"
               
               # Set the deployment URL with custom domain
               DEPLOYMENT_URL="https://${WORKER_NAME}.uratmangun.workers.dev"
