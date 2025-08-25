@@ -149,112 +149,65 @@ jobs:
             exit 1
           fi
 
-      - name: "⏳ Wait for Cloudflare Pages deployment"
-        id: wait-cloudflare
-        run: |
-          echo "⏳ Waiting for Cloudflare Pages deployment to complete..."
-          
-          # Get the current workflow run ID that triggered this
-          CURRENT_RUN_ID="${{ github.run_id }}"
-          
-          # Function to check workflow status
-          check_workflow_status() {
-            local run_id=$1
-            local status=$(gh api repos/${{ github.repository }}/actions/runs/$run_id --jq '.status')
-            local conclusion=$(gh api repos/${{ github.repository }}/actions/runs/$run_id --jq '.conclusion')
-            echo "Run $run_id: status=$status, conclusion=$conclusion"
-            
-            if [[ "$status" == "completed" ]]; then
-              if [[ "$conclusion" == "success" ]]; then
-                return 0  # Success
-              else
-                return 2  # Failed
-              fi
-            else
-              return 1  # Still running
-            fi
-          }
-          
-          # Find the Cloudflare Pages workflow run for this commit
-          CLOUDFLARE_RUN_ID=$(gh api repos/${{ github.repository }}/actions/runs \
-            --jq '.workflow_runs[] | select(.head_sha == "${{ github.sha }}" and .name == "Deploy to Cloudflare Pages") | .id' | head -1)
-          
-          if [[ -z "$CLOUDFLARE_RUN_ID" ]]; then
-            echo "❌ Could not find Cloudflare Pages workflow run"
-            exit 1
-          fi
-          
-          echo "📍 Found Cloudflare Pages workflow run: $CLOUDFLARE_RUN_ID"
-          
-          # Poll every 10 seconds for up to 10 minutes
-          MAX_ATTEMPTS=60
-          ATTEMPT=0
-          
-          while [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; do
-            ATTEMPT=$((ATTEMPT + 1))
-            echo "🔍 Check $ATTEMPT/$MAX_ATTEMPTS..."
-            
-            if check_workflow_status $CLOUDFLARE_RUN_ID; then
-              echo "✅ Cloudflare Pages deployment completed successfully!"
-              
-              # Get the worker name from the Cloudflare workflow step outputs
-              echo "🔍 Extracting worker name from Cloudflare workflow..."
-              
-              # Get job ID for the generate-worker-name step
-              JOB_DATA=$(gh api repos/${{ github.repository }}/actions/runs/$CLOUDFLARE_RUN_ID/jobs --jq '.jobs[0]')
-              JOB_ID=$(echo "$JOB_DATA" | jq -r '.id')
-              
-              # Extract worker name from step outputs
-              WORKER_NAME=$(echo "$JOB_DATA" | jq -r '.steps[] | select(.name | contains("generate-worker-name")) | .outputs.worker_name // empty' 2>/dev/null || echo "")
-              
-              # Alternative: extract from job logs using the specific log pattern
-              if [[ -z "$WORKER_NAME" ]]; then
-                echo "🔍 Extracting worker name from job logs..."
-                WORKER_NAME=$(gh api repos/${{ github.repository }}/actions/jobs/$JOB_ID/logs \
-                  | grep "Generated worker name:" | sed 's/.*Generated worker name: //' | tail -1 || echo "")
-              fi
-              
-              # Another fallback: look for the GITHUB_OUTPUT pattern
-              if [[ -z "$WORKER_NAME" ]]; then
-                echo "🔍 Looking for worker_name in GITHUB_OUTPUT..."
-                WORKER_NAME=$(gh api repos/${{ github.repository }}/actions/jobs/$JOB_ID/logs \
-                  | grep -o "worker_name=[a-z0-9-]*" | cut -d'=' -f2 | tail -1 || echo "")
-              fi
-              
-              # Fail if worker name cannot be extracted from Cloudflare workflow
-              if [[ -z "$WORKER_NAME" ]]; then
-                echo "❌ Failed to extract worker name from Cloudflare workflow"
-                echo "   Worker name is required for screenshot generation"
-                exit 1
-              fi
-              
-              echo "✅ Worker name extracted: $WORKER_NAME"
-              
-              # Set the deployment URL with custom domain
-              DEPLOYMENT_URL="https://${WORKER_NAME}.uratmangun.workers.dev"
-              echo "🔗 Cloudflare deployment URL: $DEPLOYMENT_URL"
-              echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
-              break
-            else
-              case $? in
-                1)
-                  echo "⏳ Cloudflare deployment still running..."
-                  sleep 10
-                  ;;
-                2)
-                  echo "❌ Cloudflare deployment failed!"
-                  exit 1
-                  ;;
-              esac
-            fi
-          done
-          
-          if [[ $ATTEMPT -ge $MAX_ATTEMPTS ]]; then
-            echo "⏰ Timeout waiting for Cloudflare deployment"
-            exit 1
-          fi
+      - name: "🚢 Deploy temporary build to Vercel for screenshots"
+        id: deploy-temp
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          # Farcaster Configuration
+          FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
+          FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
+          FARCASTER_CUSTODY_PRIVATE_KEY: ${{ secrets.FARCASTER_CUSTODY_PRIVATE_KEY }}
+          NEXT_PUBLIC_APP_DOMAIN: https://${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
+          # App Metadata
+          FARCASTER_APP_NAME: ${{ secrets.FARCASTER_APP_NAME }}
+          FARCASTER_APP_BUTTON_TITLE: ${{ secrets.FARCASTER_APP_BUTTON_TITLE }}
+          FARCASTER_APP_DESCRIPTION: ${{ secrets.FARCASTER_APP_DESCRIPTION }}
+          FARCASTER_SPLASH_BACKGROUND_COLOR: ${{ secrets.FARCASTER_SPLASH_BACKGROUND_COLOR }}
+          # API Keys
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Optional Configuration
+          FARCASTER_WEBHOOK_SECRET: ${{ secrets.FARCASTER_WEBHOOK_SECRET }}
+          FLUX_GENERATION_DELAY: ${{ secrets.FLUX_GENERATION_DELAY }}
+        run: |
+          echo "🚢 Deploying temporary build to Vercel for screenshot generation..."
+          
+          # Deploy to Vercel and capture the deployment URL
+          TEMP_DEPLOYMENT_URL=$(vercel deploy \
+            --token="$VERCEL_TOKEN" \
+            --yes \
+            --build-env FARCASTER_FID="$FARCASTER_FID" \
+            --build-env FARCASTER_CUSTODY_ADDRESS="$FARCASTER_CUSTODY_ADDRESS" \
+            --build-env FARCASTER_CUSTODY_PRIVATE_KEY="$FARCASTER_CUSTODY_PRIVATE_KEY" \
+            --build-env NEXT_PUBLIC_APP_DOMAIN="$NEXT_PUBLIC_APP_DOMAIN" \
+            --build-env FARCASTER_APP_NAME="$FARCASTER_APP_NAME" \
+            --build-env FARCASTER_APP_BUTTON_TITLE="$FARCASTER_APP_BUTTON_TITLE" \
+            --build-env FARCASTER_APP_DESCRIPTION="$FARCASTER_APP_DESCRIPTION" \
+            --build-env FARCASTER_SPLASH_BACKGROUND_COLOR="$FARCASTER_SPLASH_BACKGROUND_COLOR" \
+            --build-env TOGETHER_API_KEY="$TOGETHER_API_KEY" \
+            --build-env GEMINI_API_KEY="$GEMINI_API_KEY" \
+            --build-env FARCASTER_WEBHOOK_SECRET="$FARCASTER_WEBHOOK_SECRET" \
+            --build-env FLUX_GENERATION_DELAY="$FLUX_GENERATION_DELAY" \
+            ./)
+          
+          echo "✅ Temporary deployment URL: $TEMP_DEPLOYMENT_URL"
+          
+          # Extract the deployment ID from the URL for deletion later
+          # Vercel URLs are in format: https://[project]-[deploymentid].vercel.app
+          DEPLOYMENT_ID=$(echo "$TEMP_DEPLOYMENT_URL" | sed -n 's/.*-\([a-z0-9]\{9\}\)\.vercel\.app.*/\1/p')
+          
+          if [[ -z "$DEPLOYMENT_ID" ]]; then
+            # If we can't extract from URL, get it from Vercel API
+            echo "🔍 Getting deployment ID from Vercel API..."
+            DEPLOYMENT_ID=$(curl -s -X GET \
+              "https://api.vercel.com/v13/deployments?projectId=${{ steps.generate-vercel-project.outputs.project_id }}&limit=1" \
+              -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+              -H "Content-Type: application/json" | jq -r '.deployments[0].uid')
+          fi
+          
+          echo "deployment_url=$TEMP_DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+          echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+          echo "📦 Deployment ID saved for cleanup: $DEPLOYMENT_ID"
       - name: "🔑 Generate Farcaster account association"
         env:
             NEXT_PUBLIC_APP_DOMAIN: ${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
@@ -273,7 +226,7 @@ jobs:
 
       - name: "📸 Generate screenshots"
         env:
-          SCREENSHOT_URL: ${{ steps.wait-cloudflare.outputs.deployment_url }}
+          SCREENSHOT_URL: ${{ steps.deploy-temp.outputs.deployment_url }}
           NEXT_PUBLIC_APP_DOMAIN: ${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
           BROWSERLESS_API_URL: ${{ secrets.BROWSERLESS_API_URL }}
         run: |
