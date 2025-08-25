@@ -153,18 +153,9 @@ jobs:
 
       - name: "🚀 Deploy to Vercel (Production)"
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ steps.generate-vercel-project.outputs.project_id }}
-          vercel-args: '--prod'
-          working-directory: ./
         env:
-          # Ensure Vercel CLI uses the dynamically created project, not any stale repo secret
-          VERCEL_PROJECT_ID: ${{ steps.generate-vercel-project.outputs.project_id }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           # Farcaster Configuration
           FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
           FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
@@ -181,6 +172,29 @@ jobs:
           # Optional Configuration
           FARCASTER_WEBHOOK_SECRET: ${{ secrets.FARCASTER_WEBHOOK_SECRET }}
           FLUX_GENERATION_DELAY: ${{ secrets.FLUX_GENERATION_DELAY }}
+        run: |
+          echo "Installing latest Vercel CLI..."
+          npm install -g vercel@latest
+          
+          echo "Deploying to Vercel Production..."
+          vercel deploy --prod \
+            --token="$VERCEL_TOKEN" \
+            --scope="$VERCEL_ORG_ID" \
+            --yes \
+            --build-env FARCASTER_FID="$FARCASTER_FID" \
+            --build-env FARCASTER_CUSTODY_ADDRESS="$FARCASTER_CUSTODY_ADDRESS" \
+            --build-env FARCASTER_CUSTODY_PRIVATE_KEY="$FARCASTER_CUSTODY_PRIVATE_KEY" \
+            --build-env NEXT_PUBLIC_APP_DOMAIN="$NEXT_PUBLIC_APP_DOMAIN" \
+            --build-env FARCASTER_APP_NAME="$FARCASTER_APP_NAME" \
+            --build-env FARCASTER_APP_BUTTON_TITLE="$FARCASTER_APP_BUTTON_TITLE" \
+            --build-env FARCASTER_APP_DESCRIPTION="$FARCASTER_APP_DESCRIPTION" \
+            --build-env FARCASTER_SPLASH_BACKGROUND_COLOR="$FARCASTER_SPLASH_BACKGROUND_COLOR" \
+            --build-env TOGETHER_API_KEY="$TOGETHER_API_KEY" \
+            --build-env GEMINI_API_KEY="$GEMINI_API_KEY" \
+            --build-env FARCASTER_WEBHOOK_SECRET="$FARCASTER_WEBHOOK_SECRET" \
+            --build-env FLUX_GENERATION_DELAY="$FLUX_GENERATION_DELAY" \
+            --name="${{ steps.generate-vercel-project.outputs.project_name }}" \
+            ./
 
       - name: "🏷️ Update repository homepage URL"
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
@@ -207,17 +221,10 @@ jobs:
 
       - name: "🔍 Deploy to Vercel (Preview)"
         if: github.event_name == 'pull_request'
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ steps.generate-vercel-project.outputs.project_id }}
-          working-directory: ./
+        id: deploy-preview
         env:
-          # Ensure Vercel CLI uses the dynamically created project, not any stale repo secret
-          VERCEL_PROJECT_ID: ${{ steps.generate-vercel-project.outputs.project_id }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           # Farcaster Configuration
           FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
           FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
@@ -234,17 +241,42 @@ jobs:
           # Optional Configuration
           FARCASTER_WEBHOOK_SECRET: ${{ secrets.FARCASTER_WEBHOOK_SECRET }}
           FLUX_GENERATION_DELAY: ${{ secrets.FLUX_GENERATION_DELAY }}
+        run: |
+          echo "Installing latest Vercel CLI..."
+          npm install -g vercel@latest
+          
+          echo "Deploying to Vercel Preview..."
+          DEPLOYMENT_URL=$(vercel deploy \
+            --token="$VERCEL_TOKEN" \
+            --scope="$VERCEL_ORG_ID" \
+            --yes \
+            --build-env FARCASTER_FID="$FARCASTER_FID" \
+            --build-env FARCASTER_CUSTODY_ADDRESS="$FARCASTER_CUSTODY_ADDRESS" \
+            --build-env FARCASTER_CUSTODY_PRIVATE_KEY="$FARCASTER_CUSTODY_PRIVATE_KEY" \
+            --build-env NEXT_PUBLIC_APP_DOMAIN="$NEXT_PUBLIC_APP_DOMAIN" \
+            --build-env FARCASTER_APP_NAME="$FARCASTER_APP_NAME" \
+            --build-env FARCASTER_APP_BUTTON_TITLE="$FARCASTER_APP_BUTTON_TITLE" \
+            --build-env FARCASTER_APP_DESCRIPTION="$FARCASTER_APP_DESCRIPTION" \
+            --build-env FARCASTER_SPLASH_BACKGROUND_COLOR="$FARCASTER_SPLASH_BACKGROUND_COLOR" \
+            --build-env TOGETHER_API_KEY="$TOGETHER_API_KEY" \
+            --build-env GEMINI_API_KEY="$GEMINI_API_KEY" \
+            --build-env FARCASTER_WEBHOOK_SECRET="$FARCASTER_WEBHOOK_SECRET" \
+            --build-env FLUX_GENERATION_DELAY="$FLUX_GENERATION_DELAY" \
+            --name="${{ steps.generate-vercel-project.outputs.project_name }}" \
+            ./)
+          
+          echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
 
       - name: "💬 Comment deployment URL"
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.deploy-preview.outputs.deployment_url
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const deployment = process.env.VERCEL_URL || 'Deployment pending...';
+            const deploymentUrl = '${{ steps.deploy-preview.outputs.deployment_url }}';
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `✅ Vercel preview deployment ready!\n\n🔗 https://${deployment}`
+              body: `✅ Vercel preview deployment ready!\n\n🔗 ${deploymentUrl}`
             })
