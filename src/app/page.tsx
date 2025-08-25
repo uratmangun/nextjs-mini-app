@@ -197,7 +197,7 @@ export default function HomePage() {
           {isInMiniApp ? '🟢 Running inside Farcaster' : '🟡 Running in browser'}
         </p>
         <p className="text-sm text-muted-foreground">
-          Powered by @farcaster/miniapp-sdk v0.1.9
+           by uratmangun
         </p>
       </div>
     </div>

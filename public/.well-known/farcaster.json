@@ -1,19 +1,19 @@
 {
   "accountAssociation": {
     "header": "eyJmaWQiOjMzNDg0MSwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDcwYzhmNzU5YzdEMzlEQ0JjMzM0NWJDQ2FkNDBDOTJCOEM4NUJjZDMifQ",
-    "payload": "eyJkb21haW4iOiJiYWY5OWVhMDliMzgubmdyb2suYXBwIn0",
-    "signature": "MHhjMzEzYmI4Yzc5YTY4MTczZWM0MDA4ZWIzYWRkYTBmOTk1ZGM1ZTgxMzIxNzViMDNiNDBiY2FiNTRiNTc2ZmUwMzNkM2JjNzNkYjkzY2QxNTVkY2M0NWVhNDQ3NGQ3Y2RhNTBkYmZjNGQ2OTU3YWZjOWNhMGE1ZmQwNTllMWQxYjFj"
+    "payload": "eyJkb21haW4iOiJkZDY3YzViZTMxNDMubmdyb2suYXBwIn0",
+    "signature": "MHgwOTczN2UzOWMzMGJmMGZhNmFhZDUwNzVkYjdmMzZmYjcwMDgxOGI5ZmFjNzYyMzljODA5N2NlNjYzZTQ0ZTEyNDgzZGZmZTBmYmEwMDYwOTY3YzE5NGRhMjIzMjdlMjdiYTJjNmI0ZjVjYzdkYmM1NzI3ZWU5Zjg3MjBiZThlZTFi"
   },
   "miniapp": {
     "version": "1",
     "name": "Next.js Mini App",
-    "iconUrl": "https://baf99ea09b38.ngrok.app/images/flux-icon-2025-08-23T22-30-03-334Z.png",
-    "homeUrl": "https://baf99ea09b38.ngrok.app",
-    "imageUrl": "https://baf99ea09b38.ngrok.app/images/flux-embed-2025-08-23T22-31-50-065Z.png",
+    "iconUrl": "https://dd67c5be3143.ngrok.app/images/flux-icon-2025-08-25T13-38-24-242Z.png",
+    "homeUrl": "https://dd67c5be3143.ngrok.app",
+    "imageUrl": "https://dd67c5be3143.ngrok.app/images/screenshot-embed-2025-08-25T13-38-26-251Z.png",
     "buttonTitle": "Launch App",
-    "splashImageUrl": "https://baf99ea09b38.ngrok.app/images/flux-splash-2025-08-23T22-35-17-563Z.png",
+    "splashImageUrl": "https://dd67c5be3143.ngrok.app/images/screenshot-splash-2025-08-25T13-38-32-963Z.png",
     "splashBackgroundColor": "#0ea5e9",
-    "webhookUrl": "https://baf99ea09b38.ngrok.app/api/webhook",
+    "webhookUrl": "https://dd67c5be3143.ngrok.app/api/webhook",
     "subtitle": "A Next.js Farcaster Mini App",
     "description": "Built with Next.js, deployed on Cloudflare Pages",
     "primaryCategory": "productivity",

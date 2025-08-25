@@ -151,7 +151,7 @@ jobs:
 
       - name: "🔑 Generate Farcaster account association"
         env:
-          NEXT_PUBLIC_APP_DOMAIN: https://${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
+          NEXT_PUBLIC_APP_DOMAIN: ${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
           FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
           FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
           FARCASTER_CUSTODY_PRIVATE_KEY: ${{ secrets.FARCASTER_CUSTODY_PRIVATE_KEY }}
@@ -164,6 +164,7 @@ jobs:
           TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
           NEXT_PUBLIC_APP_DOMAIN: https://${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
           FLUX_GENERATION_DELAY: ${{ secrets.FLUX_GENERATION_DELAY }}
+          BROWSERLESS_API_URL: ${{ secrets.BROWSERLESS_API_URL }}
         run: |
           echo "🎨 Generating Flux images for the application"
           node scripts/generate-flux-images.js

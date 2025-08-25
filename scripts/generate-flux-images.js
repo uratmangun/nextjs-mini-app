@@ -11,26 +11,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * FLUX AI Image Generation Script for Farcaster Mini Apps
+ * Hybrid Image Generation Script for Farcaster Mini Apps
  *
- * This script generates text-based logo images using the FLUX.1-schnell-Free model via the Together AI API.
- * It automatically creates a logo featuring the Mini App name from farcaster.json configuration.
+ * This script generates:
+ * - Icon: AI-generated using Flux API (200x200px)
+ * - Embed & Splash: Screenshots using browserless API
  * Environment variables are automatically loaded from .env file using dotenv.
  *
  * Required environment variables:
- *   TOGETHER_API_KEY - Your Together AI API key (set in .env file)
- *   NEXT_PUBLIC_APP_DOMAIN - Your domain for automatic farcaster.json updates (optional)
- *   FLUX_GENERATION_DELAY - Delay between generations in seconds (optional, default: 105)
- *
- * Rate Limits:
- *   FLUX.1-schnell-Free: 0.6 queries per minute (minimum 100s between requests)
- *   This script uses 105s delay by default to avoid rate limits
+ *   TOGETHER_API_KEY - Your Together AI API key for icon generation
+ *   NEXT_PUBLIC_APP_DOMAIN - Your app domain to screenshot
  *
  * Usage:
  *   node scripts/generate-flux-images.js
  */
 
-// FLUX model configuration - using only the free model
+// FLUX model configuration for icon generation
 const FLUX_MODEL = {
   id: 'black-forest-labs/FLUX.1-schnell-Free',
   description: 'Free FLUX model for fast generation',
@@ -38,8 +34,14 @@ const FLUX_MODEL = {
   maxSteps: 4
 };
 
+// Screenshot configuration
+const SCREENSHOT_CONFIG = {
+  baseUrl: process.env.BROWSERLESS_API_URL,
+  delay: 2 // seconds between screenshots
+};
+
 // Rate limit configuration
-const DEFAULT_GENERATION_DELAY = 105; // seconds - FLUX.1-schnell-Free allows 0.6 queries/min (100s minimum, 105s for safety)
+const DEFAULT_GENERATION_DELAY = 12; // seconds
 
 /**
  * Sleep utility function to add delays between API calls
@@ -50,25 +52,117 @@ async function sleep(seconds) {
   return new Promise(resolve => setTimeout(resolve, seconds * 1000));
 }
 
-// Farcaster Mini App dimensions based on specification
-// Different dimensions for different use cases, all multiples of 16 for FLUX compatibility
+// Farcaster Mini App dimensions based on official specification
 const FARCASTER_DIMENSIONS = {
-  // Icon image - square format for app icons (200x200 rounded to 208x208)
+  // Icon image - square format (200x200px for splashImageUrl)
   icon: {
-    width: 208,
+    width: 208, // rounded to multiple of 16 for FLUX compatibility
     height: 208
   },
-  // Embed image - 3:2 aspect ratio for social feed display (optimized for embeds)
+  // Embed image - 3:2 aspect ratio for social feed display
   embed: {
     width: 768, // 3:2 ratio, multiple of 16
     height: 512
   },
-  // Splash image - vertical format for splash screens (original requirement)
+  // Splash image - web Mini App size (424x695px per spec)
   splash: {
     width: 432, // 424 rounded up to nearest multiple of 16
     height: 704 // 695 rounded up to nearest multiple of 16
   }
 };
+
+// Screenshot viewport dimensions (larger for better quality)
+const SCREENSHOT_VIEWPORTS = {
+  embed: {
+    width: 768, // 3:2 ratio, multiple of 16
+    height: 512
+  },
+  splash: {
+    width: 424,
+    height: 695
+  }
+};
+
+/**
+ * Ensure URL has proper protocol
+ * @param {string} url - The URL to check
+ * @returns {string} - URL with https:// prefix if needed
+ */
+function ensureProtocol(url) {
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return `https://${url}`;
+  }
+  return url;
+}
+
+/**
+ * Take screenshot using integrated browserless API
+ * @param {string} url - The URL to screenshot
+ * @param {Object} viewport - The viewport dimensions
+ * @param {string} filename - The output filename
+ * @returns {Promise<string>} - The generated screenshot filename
+ */
+async function takeScreenshot(url, viewport, filename) {
+  console.log(`📸 Taking screenshot with viewport ${viewport.width}x${viewport.height}...`);
+  
+  try {
+    const fullUrl = ensureProtocol(url);
+    console.log(`🔗 Using browserless API: ${SCREENSHOT_CONFIG.baseUrl}`);
+    
+    // Prepare request body
+    const requestBody = {
+      url: fullUrl,
+      gotoOptions: { waitUntil: 'networkidle2' },
+      viewport: viewport,
+      waitForFunction: {
+        fn: "() => document.body && document.body.innerText.toLowerCase().includes('by uratmangun')",
+        timeout: 10000
+      }
+    };
+
+    console.log(`📋 Request options: ${JSON.stringify(requestBody, null, 2)}`);
+
+    // Make API request
+    const apiUrl = `${SCREENSHOT_CONFIG.baseUrl}/screenshot?token=dawdawdwa`;
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API request failed: ${response.status} ${response.statusText}\n${errorText}`);
+    }
+
+    // Check if response is actually an image
+    const contentType = response.headers.get('content-type');
+    if (!contentType?.startsWith('image/')) {
+      const errorText = await response.text();
+      throw new Error(`Expected image response, got ${contentType}\n${errorText}`);
+    }
+
+    // Get image data and save directly to images directory
+    const imageBuffer = Buffer.from(await response.arrayBuffer());
+    const outputDir = join(process.cwd(), 'public', 'images');
+    
+    if (!existsSync(outputDir)) {
+      mkdirSync(outputDir, { recursive: true });
+    }
+    
+    const outputPath = join(outputDir, filename);
+    writeFileSync(outputPath, imageBuffer);
+    
+    console.log(`✅ Screenshot saved: ${filename} (${(imageBuffer.length / 1024).toFixed(2)} KB)`);
+    return filename;
+  } catch (error) {
+    console.error(`❌ Screenshot failed: ${error.message}`);
+    throw error;
+  }
+}
 
 /**
  * Creates a prompt for icon image generation (square format)
@@ -88,38 +182,16 @@ function createIconPrompt(appName) {
 }
 
 /**
- * Creates a prompt for embed image generation (3:2 aspect ratio)
- * @param {string} appName - The app name from farcaster.json
- * @returns {string} - The generated prompt for embed image creation
+ * Generate timestamp-based filename
+ * @param {string} type - The image type (icon, embed, splash)
+ * @param {string} prefix - The filename prefix (flux or screenshot)
+ * @returns {string} - The generated filename
  */
-function createEmbedPrompt(appName) {
-  if (!appName || typeof appName !== 'string' || appName.trim().length === 0) {
-    appName = 'Mini App';
-  }
-
-  const cleanAppName = appName.trim();
-  const prompt = `Create an attractive social media embed image featuring the text '${cleanAppName}' in bold, eye-catching typography. 3:2 aspect ratio, modern design with subtle background elements, optimized for social feed display. Professional and engaging visual style.`;
-
-  console.log(`🎨 Generated embed prompt for: "${cleanAppName}"`);
-  return prompt;
+function generateFilename(type, prefix = 'screenshot') {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return `${prefix}-${type}-${timestamp}.png`;
 }
 
-/**
- * Creates a prompt for splash screen image generation (vertical format)
- * @param {string} appName - The app name from farcaster.json
- * @returns {string} - The generated prompt for splash screen creation
- */
-function createSplashPrompt(appName) {
-  if (!appName || typeof appName !== 'string' || appName.trim().length === 0) {
-    appName = 'Mini App';
-  }
-
-  const cleanAppName = appName.trim();
-  const prompt = `Create a beautiful splash screen image with the text '${cleanAppName}' in large, bold typography. Vertical format, centered layout, modern gradient or clean background, professional mobile app splash screen design. Elegant and welcoming visual style.`;
-
-  console.log(`🎨 Generated splash prompt for: "${cleanAppName}"`);
-  return prompt;
-}
 
 /**
  * Reads and parses the Farcaster configuration file
@@ -196,27 +268,40 @@ function clearExistingImages() {
 }
 
 /**
- * Downloads an image from URL and saves it to the public/images directory
- * @param {string} imageUrl - URL of the image to download
+ * Downloads and saves an image from base64 data to the public/images directory
+ * @param {string} base64Data - Base64 encoded image data
  * @param {string} filename - Filename to save the image as
+ * @param {boolean} isBase64 - Whether the data is base64 encoded (default: false for URL)
  */
-async function downloadAndSaveImage(imageUrl, filename) {
+async function downloadAndSaveImage(base64Data, filename, isBase64 = false) {
   try {
-    const response = await fetch(imageUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+    let buffer;
+    
+    if (isBase64) {
+      // Handle base64 data from Flux API
+      buffer = Buffer.from(base64Data, 'base64');
+    } else {
+      // Handle URL (fallback for other image sources)
+      const response = await fetch(base64Data);
+      if (!response.ok) {
+        throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
     const imagesDir = join(process.cwd(), 'public/images');
+    
+    // Ensure images directory exists
+    if (!existsSync(imagesDir)) {
+      mkdirSync(imagesDir, { recursive: true });
+    }
+    
     const filePath = join(imagesDir, filename);
-
     writeFileSync(filePath, buffer);
     console.log(`💾 Image saved: ${filename}`);
 
-    return filePath;
+    return { filename, filePath };
   } catch (error) {
     console.error(`❌ Failed to save image: ${error.message}`);
     throw error;
@@ -224,50 +309,81 @@ async function downloadAndSaveImage(imageUrl, filename) {
 }
 
 /**
- * Generates a single image with specific dimensions and prompt
- * @param {object} together - Together AI client instance
- * @param {string} prompt - The prompt for image generation
- * @param {object} dimensions - Object with width and height properties
- * @param {string} imageType - Type of image (icon, embed, splash)
- * @returns {object} - Object with imageUrl and filename
+ * Generate a single image using the Together AI API (for icons)
+ * @param {Together} together - The Together AI client instance
+ * @param {string} prompt - The image generation prompt
+ * @param {Object} dimensions - The image dimensions {width, height}
+ * @param {string} type - The image type (icon)
+ * @returns {Promise<Object>} - The generation result with filename
  */
-async function generateSingleImage(together, prompt, dimensions, imageType) {
-  console.log(`\n⏳ Generating ${imageType} image (${dimensions.width}x${dimensions.height})...`);
-
+async function generateSingleImage(together, prompt, dimensions, type) {
   const startTime = Date.now();
+  console.log(`\n🎨 Generating ${type} image (${dimensions.width}x${dimensions.height})...`);
+  console.log(`📝 Prompt: ${prompt}`);
+  
+  try {
+    const response = await together.images.create({
+      model: FLUX_MODEL.id,
+      prompt: prompt,
+      width: dimensions.width,
+      height: dimensions.height,
+      steps: FLUX_MODEL.defaultSteps,
+      n: 1,
+      seed: Math.floor(Math.random() * 1000000),
+      response_format: 'b64_json'
+    });
 
-  const response = await together.images.create({
-    prompt: prompt.trim(),
-    model: FLUX_MODEL.id,
-    width: dimensions.width,
-    height: dimensions.height,
-    steps: FLUX_MODEL.defaultSteps,
-  });
+    if (!response.data || response.data.length === 0) {
+      throw new Error('No image data received from API');
+    }
 
-  const endTime = Date.now();
-  const duration = ((endTime - startTime) / 1000).toFixed(1);
+    const imageData = response.data[0];
+    if (!imageData.b64_json) {
+      throw new Error('No base64 image data in response');
+    }
 
-  // Handle response
-  if (!response.data || !response.data[0] || !response.data[0].url) {
-    throw new Error(`Invalid response from Together AI API for ${imageType} image - no image URL received`);
+    // Generate filename with timestamp
+    const filename = generateFilename(type, 'flux');
+    const result = await downloadAndSaveImage(imageData.b64_json, filename, true);
+
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(1);
+    
+    console.log(`✅ Generated ${type} image in ${duration}s: ${result.filename}`);
+    return result;
+    
+  } catch (error) {
+    console.error(`❌ Failed to generate ${type} image:`, error.message);
+    throw error;
   }
+}
 
-  const imageUrl = response.data[0].url;
-
-  // Create filename with timestamp and type
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `flux-${imageType}-${timestamp}.png`;
-
-  // Download and save the image
-  await downloadAndSaveImage(imageUrl, filename);
-
-  console.log(`✅ ${imageType} image generated in ${duration}s`);
-
-  return {
-    imageUrl,
-    filename,
-    duration
-  };
+/**
+ * Generate a single screenshot with specific viewport
+ * @param {string} url - The URL to screenshot
+ * @param {Object} viewport - The viewport dimensions {width, height}
+ * @param {string} type - The image type (embed, splash)
+ * @returns {Promise<Object>} - The screenshot result with filename
+ */
+async function generateSingleScreenshot(url, viewport, type) {
+  const startTime = Date.now();
+  console.log(`\n📸 Taking ${type} screenshot (${viewport.width}x${viewport.height})...`);
+  console.log(`🌐 URL: ${url}`);
+  
+  try {
+    const filename = generateFilename(type, 'screenshot');
+    await takeScreenshot(url, viewport, filename);
+    
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(1);
+    
+    console.log(`✅ Generated ${type} screenshot in ${duration}s: ${filename}`);
+    return { filename: filename };
+    
+  } catch (error) {
+    console.error(`❌ Failed to generate ${type} screenshot:`, error.message);
+    throw error;
+  }
 }
 
 /**
@@ -357,29 +473,30 @@ function updateFarcasterConfig(domain, imageFilenames) {
  */
 async function generateImage() {
   try {
-    // Check for Together AI API key (loaded from .env file via dotenv)
+    // Check for Together AI API key for icon generation
     const apiKey = process.env.TOGETHER_API_KEY;
     if (!apiKey) {
       console.error('❌ Error: TOGETHER_API_KEY is not set.');
       console.log('\n💡 To fix this:');
       console.log('   1. Get your API key from: https://api.together.xyz/settings/api-keys');
-      console.log('   2. Create a .env file in the project root with:');
-      console.log('      TOGETHER_API_KEY=your-actual-api-key-here');
-      console.log('   3. Or set it as an environment variable:');
-      console.log('      export TOGETHER_API_KEY="your-api-key-here"');
-      console.log('\n📝 Note: The script automatically loads environment variables from .env file');
+      console.log('   2. Add TOGETHER_API_KEY to your .env file');
+      console.log('\n📝 This is needed for AI icon generation');
       process.exit(1);
     }
 
-    // Check for NEXT_PUBLIC_APP_DOMAIN environment variable (loaded from .env file via dotenv)
-    const farcasterDomain = process.env.NEXT_PUBLIC_APP_DOMAIN;
-    if (!farcasterDomain) {
-      console.warn('⚠️  Warning: NEXT_PUBLIC_APP_DOMAIN is not set.');
-      console.warn('   The farcaster.json file will not be automatically updated with the correct domain.');
-      console.warn('   Add NEXT_PUBLIC_APP_DOMAIN=your-domain.com to your .env file to enable automatic configuration.');
-    } else {
-      console.log(`🌐 Using domain: ${farcasterDomain}`);
+    // Check for app domain (required for screenshots)
+    const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN;
+    if (!appDomain) {
+      console.error('❌ Error: NEXT_PUBLIC_APP_DOMAIN is not set.');
+      console.log('\n💡 To fix this:');
+      console.log('   1. Add NEXT_PUBLIC_APP_DOMAIN to your .env file');
+      console.log('   2. Example: NEXT_PUBLIC_APP_DOMAIN=https://your-app.vercel.app');
+      console.log('\n📝 This URL will be used to take screenshots of your app');
+      process.exit(1);
     }
+
+    const farcasterDomain = appDomain;
+    console.log(`🌐 Taking screenshots of: ${farcasterDomain}`);
 
     // Read Farcaster configuration
     console.log('📖 Reading Farcaster configuration...');
@@ -407,18 +524,16 @@ async function generateImage() {
       return;
     }
 
-    // Extract app name from farcaster config for text logo generation
+    // Extract app name from farcaster config for icon generation
     const appName = farcasterParams.appName || 'Mini App';
 
-    // Create prompts for each image type
+    // Create prompt for icon image
     const iconPrompt = createIconPrompt(appName);
-    const embedPrompt = createEmbedPrompt(appName);
-    const splashPrompt = createSplashPrompt(appName);
 
-    console.log('\n🎯 Generating three images for your Mini App...');
-    console.log('   📱 Icon image (200x200 → 208x208px)');
-    console.log('   🖼️  Embed image (3:2 ratio → 768x512px)');
-    console.log('   🚀 Splash image (vertical → 432x704px)');
+    console.log('\n🎯 Generating hybrid images for your Mini App...');
+    console.log('   📱 Icon: AI-generated using Flux (208x208px)');
+    console.log('   🖼️  Embed: Screenshot (1200x800px viewport)');
+    console.log('   🚀 Splash: Screenshot (424x695px viewport)');
 
     // Clear existing images and prepare directory
     clearExistingImages();
@@ -431,21 +546,16 @@ async function generateImage() {
     console.log('\n📝 Generation Parameters:');
     console.log('=' .repeat(50));
     console.log(`🎨 Model: ${FLUX_MODEL.id}`);
-    console.log(`🔢 Steps: ${FLUX_MODEL.defaultSteps}`);
-    console.log(`📱 Icon: ${FARCASTER_DIMENSIONS.icon.width}x${FARCASTER_DIMENSIONS.icon.height}px`);
-    console.log(`🖼️  Embed: ${FARCASTER_DIMENSIONS.embed.width}x${FARCASTER_DIMENSIONS.embed.height}px`);
-    console.log(`🚀 Splash: ${FARCASTER_DIMENSIONS.splash.width}x${FARCASTER_DIMENSIONS.splash.height}px`);
+    console.log(`🔗 Screenshot URL: ${farcasterDomain}`);
+    console.log(`📱 Icon: ${FARCASTER_DIMENSIONS.icon.width}x${FARCASTER_DIMENSIONS.icon.height}px (AI)`);
+    console.log(`🖼️  Embed: ${SCREENSHOT_VIEWPORTS.embed.width}x${SCREENSHOT_VIEWPORTS.embed.height}px (Screenshot)`);
+    console.log(`🚀 Splash: ${SCREENSHOT_VIEWPORTS.splash.width}x${SCREENSHOT_VIEWPORTS.splash.height}px (Screenshot)`);
     console.log('=' .repeat(50));
 
-    // Get generation delay from environment (default: 12 seconds)
-    const generationDelay = parseInt(process.env.FLUX_GENERATION_DELAY) || DEFAULT_GENERATION_DELAY;
-    console.log(`⏱️  Using ${generationDelay}s delay between generations (FLUX rate limit: 6 img/min)`);
-
-    // Generate all three images
-    console.log('\n⏳ Generating images... This will take a few minutes due to rate limits.');
+    console.log('\n⏳ Generating images...');
     const overallStartTime = Date.now();
-
-    // Generate icon image
+    await sleep(105);
+    // Generate AI icon
     const iconResult = await generateSingleImage(
       together,
       iconPrompt,
@@ -453,25 +563,23 @@ async function generateImage() {
       'icon'
     );
 
-    // Wait before next generation to respect rate limits
-    await sleep(generationDelay);
+    // Wait between generations
+    await sleep(SCREENSHOT_CONFIG.delay);
 
-    // Generate embed image
-    const embedResult = await generateSingleImage(
-      together,
-      embedPrompt,
-      FARCASTER_DIMENSIONS.embed,
+    // Take embed screenshot  
+    const embedResult = await generateSingleScreenshot(
+      farcasterDomain,
+      SCREENSHOT_VIEWPORTS.embed,
       'embed'
     );
 
-    // Wait before next generation to respect rate limits
-    await sleep(generationDelay);
+    // Wait between screenshots
+    await sleep(SCREENSHOT_CONFIG.delay);
 
-    // Generate splash image
-    const splashResult = await generateSingleImage(
-      together,
-      splashPrompt,
-      FARCASTER_DIMENSIONS.splash,
+    // Take splash screenshot
+    const splashResult = await generateSingleScreenshot(
+      farcasterDomain,
+      SCREENSHOT_VIEWPORTS.splash,
       'splash'
     );
 
@@ -494,11 +602,12 @@ async function generateImage() {
     // Display success message with results
     console.log('\n✅ All images generated and saved successfully!');
     console.log('=' .repeat(60));
-    console.log(`📱 Icon image: public/images/${imageFilenames.icon}`);
-    console.log(`🖼️  Embed image: public/images/${imageFilenames.embed}`);
-    console.log(`🚀 Splash image: public/images/${imageFilenames.splash}`);
+    console.log(`📱 Icon (AI): public/images/${imageFilenames.icon}`);
+    console.log(`🖼️  Embed (Screenshot): public/images/${imageFilenames.embed}`);
+    console.log(`🚀 Splash (Screenshot): public/images/${imageFilenames.splash}`);
     console.log(`⏱️  Total generation time: ${totalDuration}s`);
-    console.log(`🎨 Model used: ${FLUX_MODEL.id}`);
+    console.log(`🎨 Icon: AI-generated with Flux`);
+    console.log(`📸 Screenshots: ${farcasterDomain}`);
     console.log('=' .repeat(60));
 
     // Show integration suggestions based on whether domain is configured
@@ -554,12 +663,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
 export {
   generateImage,
-  FLUX_MODEL,
-  FARCASTER_DIMENSIONS,
-  createIconPrompt,
-  createEmbedPrompt,
-  createSplashPrompt,
-  generateSingleImage,
   readFarcasterConfig,
   extractFarcasterParams,
   clearExistingImages,
