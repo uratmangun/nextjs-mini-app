@@ -151,7 +151,7 @@ jobs:
             
             # Link the project to current directory
             echo "🔗 Linking Vercel project..."
-            vercel link --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID" --yes --project="$PROJECT_ID"
+            vercel link --token="$VERCEL_TOKEN" --yes --project="$PROJECT_ID"
           else
             echo "❌ Failed to create Vercel project"
             echo "Response: $CREATE_RESPONSE"
@@ -183,7 +183,6 @@ jobs:
           echo "Deploying to Vercel Production..."
           vercel deploy --prod \
             --token="$VERCEL_TOKEN" \
-            --scope="$VERCEL_ORG_ID" \
             --yes \
             --build-env FARCASTER_FID="$FARCASTER_FID" \
             --build-env FARCASTER_CUSTODY_ADDRESS="$FARCASTER_CUSTODY_ADDRESS" \
@@ -249,7 +248,6 @@ jobs:
           echo "Deploying to Vercel Preview..."
           DEPLOYMENT_URL=$(vercel deploy \
             --token="$VERCEL_TOKEN" \
-            --scope="$VERCEL_ORG_ID" \
             --yes \
             --build-env FARCASTER_FID="$FARCASTER_FID" \
             --build-env FARCASTER_CUSTODY_ADDRESS="$FARCASTER_CUSTODY_ADDRESS" \
