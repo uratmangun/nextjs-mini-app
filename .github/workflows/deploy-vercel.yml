@@ -160,7 +160,6 @@ jobs:
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           # Farcaster Configuration
           FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
           FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
@@ -194,7 +193,6 @@ jobs:
             --build-env GEMINI_API_KEY="$GEMINI_API_KEY" \
             --build-env FARCASTER_WEBHOOK_SECRET="$FARCASTER_WEBHOOK_SECRET" \
             --build-env FLUX_GENERATION_DELAY="$FLUX_GENERATION_DELAY" \
-            --name="${{ steps.generate-vercel-project.outputs.project_name }}" \
             ./
 
       - name: "🏷️ Update repository homepage URL"
@@ -225,7 +223,6 @@ jobs:
         id: deploy-preview
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           # Farcaster Configuration
           FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
           FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
@@ -259,7 +256,6 @@ jobs:
             --build-env GEMINI_API_KEY="$GEMINI_API_KEY" \
             --build-env FARCASTER_WEBHOOK_SECRET="$FARCASTER_WEBHOOK_SECRET" \
             --build-env FLUX_GENERATION_DELAY="$FLUX_GENERATION_DELAY" \
-            --name="${{ steps.generate-vercel-project.outputs.project_name }}" \
             ./)
           
           echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
