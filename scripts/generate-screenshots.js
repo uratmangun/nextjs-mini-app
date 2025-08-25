@@ -256,11 +256,11 @@ function updateFarcasterConfig(domain, screenshotFilenames) {
 async function generateScreenshots() {
   try {
     // Check for app domain (required for screenshots)
-    const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN;
+    const appDomain = process.env.SCREENSHOT_URL;
     if (!appDomain) {
-      console.error('❌ Error: NEXT_PUBLIC_APP_DOMAIN is not set.');
+      console.error('❌ Error: SCREENSHOT_URL is not set.');
       console.error('   Please add your app domain to your .env file.');
-      console.error('   Example: NEXT_PUBLIC_APP_DOMAIN=your-domain.ngrok.app');
+      console.error('   Example: SCREENSHOT_URL=your-domain.ngrok.app');
       process.exit(1);
     }
 
@@ -298,7 +298,7 @@ async function generateScreenshots() {
     const splashResult = await generateSingleScreenshot(appDomain, SCREENSHOT_VIEWPORTS.splash, 'splash');
 
     // Update farcaster.json with new URLs
-    updateFarcasterConfig(appDomain, {
+    updateFarcasterConfig(process.env.NEXT_PUBLIC_APP_DOMAIN, {
       embed: embedResult.filename,
       splash: splashResult.filename
     });
