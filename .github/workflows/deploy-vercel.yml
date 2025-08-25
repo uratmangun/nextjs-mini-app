@@ -43,6 +43,9 @@ jobs:
           NEXT_TELEMETRY_DISABLED: 1
           NODE_OPTIONS: "--max-old-space-size=4096"
 
+      - name: "🛠️ Install Vercel CLI"
+        run: pnpm add -g vercel@latest
+
       - name: "🧹 Check and delete existing matching Vercel projects"
         id: cleanup-projects
         env:
@@ -58,9 +61,6 @@ jobs:
           echo "Pattern: ${REPO_PATTERN}*"
           echo "========================================="
           
-          # Install Vercel CLI
-          npm install -g vercel@latest
-          
           # List all Vercel projects
           PROJECTS=$(curl -s -X GET \
             "https://api.vercel.com/v9/projects?teamId=${VERCEL_ORG_ID}" \
@@ -75,7 +75,7 @@ jobs:
             echo "$MATCHING_PROJECTS"
             echo ""
             
-            # Delete each matching project
+            # Delete each matching project with rate limiting
             while IFS= read -r PROJECT; do
               if [ -n "$PROJECT" ]; then
                 echo "Deleting Vercel project: $PROJECT"
@@ -91,6 +91,9 @@ jobs:
                   echo "⚠ Warning: Failed to delete Vercel project: $PROJECT"
                   echo "Response: $DELETE_RESPONSE"
                 fi
+                
+                # Rate limiting - wait 1 second between deletions
+                sleep 1
               fi
             done <<< "$MATCHING_PROJECTS"
           else
@@ -145,6 +148,10 @@ jobs:
             echo "Project ID: $PROJECT_ID"
             echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
             echo "project_id=$PROJECT_ID" >> $GITHUB_OUTPUT
+            
+            # Link the project to current directory
+            echo "🔗 Linking Vercel project..."
+            vercel link --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID" --yes --project="$PROJECT_ID"
           else
             echo "❌ Failed to create Vercel project"
             echo "Response: $CREATE_RESPONSE"
@@ -173,9 +180,6 @@ jobs:
           FARCASTER_WEBHOOK_SECRET: ${{ secrets.FARCASTER_WEBHOOK_SECRET }}
           FLUX_GENERATION_DELAY: ${{ secrets.FLUX_GENERATION_DELAY }}
         run: |
-          echo "Installing latest Vercel CLI..."
-          npm install -g vercel@latest
-          
           echo "Deploying to Vercel Production..."
           vercel deploy --prod \
             --token="$VERCEL_TOKEN" \
@@ -242,9 +246,6 @@ jobs:
           FARCASTER_WEBHOOK_SECRET: ${{ secrets.FARCASTER_WEBHOOK_SECRET }}
           FLUX_GENERATION_DELAY: ${{ secrets.FLUX_GENERATION_DELAY }}
         run: |
-          echo "Installing latest Vercel CLI..."
-          npm install -g vercel@latest
-          
           echo "Deploying to Vercel Preview..."
           DEPLOYMENT_URL=$(vercel deploy \
             --token="$VERCEL_TOKEN" \
