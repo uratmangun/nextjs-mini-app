@@ -7,6 +7,7 @@ export default function HomePage() {
   const [user, setUser] = useState<any>(null);
   const [isInMiniApp, setIsInMiniApp] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -74,6 +75,24 @@ export default function HomePage() {
     }
   };
 
+  const handleAddMiniApp = async () => {
+    try {
+      await sdk.actions.addMiniApp();
+    } catch (error) {
+      console.error('Failed to add mini app:', error);
+    }
+  };
+
+  const copyToClipboard = async (text: string, commandType: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedCommand(commandType);
+      setTimeout(() => setCopiedCommand(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -95,6 +114,39 @@ export default function HomePage() {
         <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
           Experience the power of decentralized social networking with our Farcaster Mini App
         </p>
+      </section>
+
+      {/* GitHub CLI Template Section */}
+      <section className="max-w-4xl mx-auto space-y-4">
+        <div className="text-center space-y-2">
+          <h2 className="text-2xl font-bold">🚀 Get Started with This Template</h2>
+          <p className="text-muted-foreground">Clone this template and create your own Farcaster Mini App</p>
+        </div>
+        
+        <div className="max-w-2xl mx-auto">
+          {/* Create and Clone Combined */}
+          <div className="bg-card rounded-lg p-6 space-y-4">
+            <h3 className="font-semibold flex items-center gap-2 text-lg">
+              🚀 Create & Clone Template
+            </h3>
+            <p className="text-muted-foreground text-sm">
+              This command creates a new repository from the template and clones it to your local machine
+            </p>
+            <div className="bg-background rounded border p-4 font-mono text-sm">
+              <code>gh repo create my-farcaster-app --template uratmangun/nextjs-mini-app --clone</code>
+            </div>
+            <button
+              onClick={() => copyToClipboard('gh repo create my-farcaster-app --template uratmangun/nextjs-mini-app --clone', 'combined')}
+              className="btn-outline w-full"
+            >
+              {copiedCommand === 'combined' ? '✅ Copied!' : '📋 Copy Command'}
+            </button>
+          </div>
+        </div>
+
+        <div className="text-center text-sm text-muted-foreground">
+          <p>Need GitHub CLI? Install it from <a href="https://cli.github.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">cli.github.com</a></p>
+        </div>
       </section>
 
       {/* User Info Card */}
@@ -139,6 +191,18 @@ export default function HomePage() {
             disabled={!isInMiniApp}
           >
             Compose New Cast
+          </button>
+        </div>
+
+        <div className="bg-card rounded-lg p-6 space-y-3">
+          <h3 className="text-xl font-semibold">⭐ Add to Favorites</h3>
+          <p className="text-muted-foreground">Save this mini app to your favorites for quick access</p>
+          <button
+            onClick={handleAddMiniApp}
+            className="btn-outline w-full"
+            disabled={!isInMiniApp}
+          >
+            Add Mini App
           </button>
         </div>
 
