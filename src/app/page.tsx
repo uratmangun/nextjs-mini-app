@@ -133,7 +133,7 @@ export default function HomePage() {
               This command creates a new repository from the template and clones it to your local machine
             </p>
             <div className="bg-background rounded border p-4 font-mono text-sm">
-              <code>gh repo create my-farcaster-app --template uratmangun/nextjs-mini-app --clone</code>
+              <code>gh repo create my-farcaster-app --template uratmangun/nextjs-mini-app --clone --public</code>
             </div>
             <button
               onClick={() => copyToClipboard('gh repo create my-farcaster-app --template uratmangun/nextjs-mini-app --clone', 'combined')}
