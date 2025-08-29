@@ -136,7 +136,7 @@ export default function HomePage() {
               <code>gh repo create my-farcaster-app --template uratmangun/nextjs-mini-app --clone --public</code>
             </div>
             <button
-              onClick={() => copyToClipboard('gh repo create my-farcaster-app --template uratmangun/nextjs-mini-app --clone', 'combined')}
+              onClick={() => copyToClipboard('gh repo create my-farcaster-app --template uratmangun/nextjs-mini-app --clone --public', 'combined')}
               className="btn-outline w-full"
             >
               {copiedCommand === 'combined' ? '✅ Copied!' : '📋 Copy Command'}
