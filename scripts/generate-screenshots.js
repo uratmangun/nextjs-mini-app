@@ -209,6 +209,70 @@ async function generateSingleScreenshot(url, viewport, type) {
 }
 
 /**
+ * Generate a screenshot with retry logic
+ * @param {string} url - The URL to screenshot
+ * @param {Object} viewport - The viewport dimensions {width, height}
+ * @param {string} type - The image type (embed, splash)
+ * @param {number} maxAttempts - Maximum number of retry attempts (default: 3)
+ * @param {number} retryDelaySeconds - Delay between retries in seconds (default: 5)
+ * @returns {Promise<Object>} - The screenshot result with filename or error summary
+ */
+async function generateScreenshotWithRetry(url, viewport, type, maxAttempts = 3, retryDelaySeconds = 5) {
+  const failures = [];
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const timestamp = new Date().toISOString();
+    console.log(`\n🔄 Attempt ${attempt}/${maxAttempts} for ${type} screenshot`);
+    
+    try {
+      const result = await generateSingleScreenshot(url, viewport, type);
+      
+      if (attempt > 1) {
+        console.log(`🎉 Screenshot successful on attempt ${attempt}!`);
+      }
+      
+      return {
+        success: true,
+        result: result,
+        attempts: attempt,
+        failures: failures
+      };
+      
+    } catch (error) {
+      const failureInfo = {
+        attempt: attempt,
+        timestamp: timestamp,
+        error: error.message,
+        type: type,
+        viewport: `${viewport.width}x${viewport.height}`
+      };
+      
+      failures.push(failureInfo);
+      
+      console.error(`❌ Attempt ${attempt}/${maxAttempts} failed at ${timestamp}:`);
+      console.error(`   Error: ${error.message}`);
+      console.error(`   Type: ${type} (${viewport.width}x${viewport.height})`);
+      
+      // If this isn't the last attempt, wait before retrying
+      if (attempt < maxAttempts) {
+        console.log(`⏳ Waiting ${retryDelaySeconds} seconds before retry...`);
+        await sleep(retryDelaySeconds);
+      } else {
+        console.error(`💥 All ${maxAttempts} attempts failed for ${type} screenshot`);
+      }
+    }
+  }
+  
+  // All attempts failed
+  return {
+    success: false,
+    result: null,
+    attempts: maxAttempts,
+    failures: failures
+  };
+}
+
+/**
  * Updates the farcaster.json file with the screenshot URLs
  * @param {string} domain - The NEXT_PUBLIC_APP_DOMAIN to use
  * @param {object} screenshotFilenames - Object containing filenames for embed and splash screenshots
@@ -288,29 +352,79 @@ async function generateScreenshots() {
     console.log(`🚀 Splash: ${SCREENSHOT_VIEWPORTS.splash.width}x${SCREENSHOT_VIEWPORTS.splash.height}px (Screenshot)`);
     console.log('='.repeat(50));
 
-    console.log('\n⏳ Generating images...');
+    console.log('\n⏳ Generating images with retry logic...');
     const overallStartTime = Date.now();
 
-    // Generate screenshots
-    const embedResult = await generateSingleScreenshot(appDomain, SCREENSHOT_VIEWPORTS.embed, 'embed');
+    // Generate screenshots with retry logic (3 attempts, 5-second delay)
+    const embedResult = await generateScreenshotWithRetry(appDomain, SCREENSHOT_VIEWPORTS.embed, 'embed');
     await sleep(GENERATION_DELAYS.betweenImages);
 
-    const splashResult = await generateSingleScreenshot(appDomain, SCREENSHOT_VIEWPORTS.splash, 'splash');
+    const splashResult = await generateScreenshotWithRetry(appDomain, SCREENSHOT_VIEWPORTS.splash, 'splash');
 
-    // Update farcaster.json with new URLs
-    updateFarcasterConfig(process.env.NEXT_PUBLIC_APP_DOMAIN, {
-      embed: embedResult.filename,
-      splash: splashResult.filename
-    });
+    // Check results and handle failures
+    const successfulScreenshots = {};
+    const allFailures = [];
+
+    if (embedResult.success) {
+      successfulScreenshots.embed = embedResult.result.filename;
+      console.log(`✅ Embed screenshot succeeded after ${embedResult.attempts} attempt(s)`);
+    } else {
+      console.error(`💥 Embed screenshot failed after ${embedResult.attempts} attempts`);
+      allFailures.push(...embedResult.failures);
+    }
+
+    if (splashResult.success) {
+      successfulScreenshots.splash = splashResult.result.filename;
+      console.log(`✅ Splash screenshot succeeded after ${splashResult.attempts} attempt(s)`);
+    } else {
+      console.error(`💥 Splash screenshot failed after ${splashResult.attempts} attempts`);
+      allFailures.push(...splashResult.failures);
+    }
 
     const overallEndTime = Date.now();
     const totalDuration = ((overallEndTime - overallStartTime) / 1000).toFixed(1);
 
-    console.log('\n🎉 Screenshot generation complete!');
-    console.log(`   📁 Embed: public/images/${embedResult.filename}`);
-    console.log(`   📁 Splash: public/images/${splashResult.filename}`);
-    console.log(`   ⏱️  Total time: ${totalDuration}s`);
-    console.log('   ✅ Updated: public/.well-known/farcaster.json');
+    // Print final results
+    if (embedResult.success && splashResult.success) {
+      // Both successful - update config and show success
+      updateFarcasterConfig(process.env.NEXT_PUBLIC_APP_DOMAIN, successfulScreenshots);
+      
+      console.log('\n🎉 Screenshot generation complete!');
+      console.log(`   📁 Embed: public/images/${successfulScreenshots.embed}`);
+      console.log(`   📁 Splash: public/images/${successfulScreenshots.splash}`);
+      console.log(`   ⏱️  Total time: ${totalDuration}s`);
+      console.log('   ✅ Updated: public/.well-known/farcaster.json');
+      
+    } else if (Object.keys(successfulScreenshots).length > 0) {
+      // Partial success
+      updateFarcasterConfig(process.env.NEXT_PUBLIC_APP_DOMAIN, successfulScreenshots);
+      
+      console.log('\n⚠️  Partial screenshot generation complete:');
+      Object.entries(successfulScreenshots).forEach(([type, filename]) => {
+        console.log(`   ✅ ${type}: public/images/${filename}`);
+      });
+      console.log(`   ⏱️  Total time: ${totalDuration}s`);
+      console.log('   ✅ Updated: public/.well-known/farcaster.json (partial)');
+      
+      // Show failure summary
+      console.log('\n💥 Failures summary:');
+      allFailures.forEach(failure => {
+        console.log(`   ❌ ${failure.type} attempt ${failure.attempt} at ${failure.timestamp}:`);
+        console.log(`      ${failure.error}`);
+      });
+      
+    } else {
+      // Complete failure
+      console.log('\n💥 Screenshot generation failed completely!');
+      console.log(`   ⏱️  Total time: ${totalDuration}s`);
+      console.log('\n📋 Complete failure summary:');
+      allFailures.forEach(failure => {
+        console.log(`   ❌ ${failure.type} (${failure.viewport}) attempt ${failure.attempt} at ${failure.timestamp}:`);
+        console.log(`      ${failure.error}`);
+      });
+      
+      throw new Error('All screenshot generation attempts failed. See detailed logs above.');
+    }
 
   } catch (error) {
     console.error('\n❌ Error generating screenshots:');
@@ -326,6 +440,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
 export { 
   generateSingleScreenshot,
+  generateScreenshotWithRetry,
   takeScreenshot,
   clearExistingScreenshots,
   updateFarcasterConfig,
