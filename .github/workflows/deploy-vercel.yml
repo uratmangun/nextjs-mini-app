@@ -43,6 +43,7 @@ jobs:
         id: cleanup-projects
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          FARCASTER_BEARER_TOKEN: ${{ secrets.FARCASTER_BEARER_TOKEN }}
         run: |
           # Get repository name for pattern matching
           REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
@@ -79,6 +80,8 @@ jobs:
                 # Check if deletion was successful (Vercel API returns empty response on success)
                 if [ -z "$DELETE_RESPONSE" ] || [ "$DELETE_RESPONSE" = "{}" ]; then
                   echo "✓ Successfully deleted Vercel project: $PROJECT"
+                  echo "💔 Unfavoriting frame for $PROJECT.vercel.app"
+                  node scripts/unfavorite-frame.js "$PROJECT.vercel.app"
                 else
                   echo "⚠ Warning: Failed to delete Vercel project: $PROJECT"
                   echo "Response: $DELETE_RESPONSE"
@@ -326,6 +329,19 @@ jobs:
               console.error('Failed to update repository homepage URL:', error);
               // Don't fail the workflow if homepage update fails
             }
+
+      - name: "📢 Announce deployment and favorite frame"
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        env:
+          FARCASTER_BEARER_TOKEN: ${{ secrets.FARCASTER_BEARER_TOKEN }}
+        run: |
+          PROJECT_NAME="${{ steps.generate-vercel-project.outputs.project_name }}"
+          
+          echo "❤️ Favoriting frame for $PROJECT_NAME.vercel.app"
+          node scripts/favorite-frame.js "$PROJECT_NAME.vercel.app"
+          
+          echo "🚀 Posting to Farcaster about the new deployment"
+          node scripts/post-to-farcaster.js "New version deployed at $PROJECT_NAME.vercel.app" "https://$PROJECT_NAME.vercel.app"
 
       - name: "🔍 Deploy to Vercel (Preview)"
         if: github.event_name == 'pull_request'

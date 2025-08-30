@@ -15,12 +15,16 @@
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
-    "generate:assets": "node scripts/generate-farcaster-account-association.js generate & node scripts/generate-screenshots.js & wait"
+    "generate:assets": "node scripts/generate-farcaster-account-association.js generate & node scripts/generate-screenshots.js & wait",
+    "post:farcaster": "node scripts/post-to-farcaster.js",
+    "favorite:frame": "node scripts/favorite-frame.js",
+    "unfavorite:frame": "node scripts/unfavorite-frame.js"
   },
   "dependencies": {
     "@farcaster/jfs": "^0.0.6",
     "@farcaster/miniapp-sdk": "^0.1.9",
     "@google/genai": "^1.15.0",
+    "@neynar/nodejs-sdk": "^2.46.0",
     "@opennextjs/cloudflare": "^1.6.5",
     "dotenv": "^17.2.1",
     "ethers": "6",
