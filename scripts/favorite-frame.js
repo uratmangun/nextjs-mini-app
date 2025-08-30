@@ -3,6 +3,9 @@
 require('dotenv').config();
 const { randomUUID } = require('crypto');
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 5000; // 5 seconds
+
 async function favoriteFrame() {
   const url = 'https://client.farcaster.xyz/v1/favorite-frames';
   const bearerToken = process.env.FARCASTER_BEARER_TOKEN;
@@ -10,7 +13,7 @@ async function favoriteFrame() {
   if (!bearerToken) {
     console.error('Error: FARCASTER_BEARER_TOKEN is not set in your .env file.');
     console.log('Please add your bearer token to the .env file to post to Farcaster.');
-    return;
+    process.exit(1);
   }
 
   const domain = process.argv[2] || 'eggs.name';
@@ -38,27 +41,38 @@ async function favoriteFrame() {
     'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'
   };
 
-  try {
-    console.log(`🚀 Favoriting frame for domain: ${domain}...`);
-    const response = await fetch(url, {
-      method: 'PUT',
-      headers: headers,
-      body: JSON.stringify(payload)
-    });
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    try {
+      console.log(`🚀 Attempt ${i + 1}/${MAX_RETRIES}: Favoriting frame for domain: ${domain}...`);
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: headers,
+        body: JSON.stringify(payload)
+      });
 
-    const responseData = await response.json();
-
-    if (response.ok) {
-      console.log('✅ Successfully favorited frame:');
-      console.log(JSON.stringify(responseData, null, 2));
-    } else {
-      console.error(`❌ Error favoriting frame: ${response.status} ${response.statusText}`);
-      console.error('   Response:', responseData);
+      if (response.ok) {
+        const responseData = await response.json();
+        console.log('✅ Successfully favorited frame:');
+        console.log(JSON.stringify(responseData, null, 2));
+        return; // Success, exit the function
+      } else {
+        const responseData = await response.json();
+        console.error(`❌ Attempt ${i + 1} failed: ${response.status} ${response.statusText}`);
+        console.error('   Response:', responseData);
+      }
+    } catch (error) {
+      console.error(`💥 An unexpected error occurred on attempt ${i + 1}:`);
+      console.error(error);
     }
-  } catch (error) {
-    console.error('💥 An unexpected error occurred:');
-    console.error(error);
+
+    if (i < MAX_RETRIES - 1) {
+      console.log(`Retrying in ${RETRY_DELAY / 1000} seconds...`);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+    }
   }
+
+  console.error(`❌ Failed to favorite frame after ${MAX_RETRIES} attempts.`);
+  process.exit(1); // Exit with an error code
 }
 
 // Execute the function

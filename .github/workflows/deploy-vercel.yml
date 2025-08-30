@@ -338,19 +338,7 @@ jobs:
           PROJECT_NAME="${{ steps.generate-vercel-project.outputs.project_name }}"
           
           echo "❤️ Favoriting frame for $PROJECT_NAME.vercel.app"
-          for i in 1 2 3; do
-            node scripts/favorite-frame.js "$PROJECT_NAME.vercel.app"
-            if [ $? -eq 0 ]; then
-              echo "✅ Successfully favorited frame on attempt $i"
-              break
-            fi
-            if [ $i -lt 3 ]; then
-              echo "⚠️ Attempt $i failed, retrying in 5 seconds..."
-              sleep 5
-            else
-              echo "❌ Failed to favorite frame after 3 attempts."
-            fi
-          done
+          node scripts/favorite-frame.js "$PROJECT_NAME.vercel.app"
           
           echo "🚀 Posting to Farcaster about the new deployment"
           node scripts/post-to-farcaster.js "New version deployed at $PROJECT_NAME.vercel.app" "https://$PROJECT_NAME.vercel.app"
