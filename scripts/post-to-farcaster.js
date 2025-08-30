@@ -15,7 +15,7 @@ async function postToFarcaster() {
   const text = process.argv[2] || "@uratmangun";
   const embedUrl = process.argv[3];
 
-  const embeds = embedUrl ? [{ url: embedUrl }] : [];
+  const embeds = embedUrl ? [embedUrl] : [];
 
   const payload = {
     text: text,
