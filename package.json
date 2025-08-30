@@ -18,7 +18,8 @@
     "generate:assets": "node scripts/generate-farcaster-account-association.js generate & node scripts/generate-screenshots.js & wait",
     "post:farcaster": "node scripts/post-to-farcaster.js",
     "favorite:frame": "node scripts/favorite-frame.js",
-    "unfavorite:frame": "node scripts/unfavorite-frame.js"
+    "unfavorite:frame": "node scripts/unfavorite-frame.js",
+    "debug:domain": "node scripts/debug-domain-manifest.js"
   },
   "dependencies": {
     "@farcaster/jfs": "^0.0.6",

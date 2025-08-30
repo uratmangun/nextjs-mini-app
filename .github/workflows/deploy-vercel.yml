@@ -337,6 +337,9 @@ jobs:
         run: |
           PROJECT_NAME="${{ steps.generate-vercel-project.outputs.project_name }}"
           
+          echo "❤️ Debugging domain manifest for $PROJECT_NAME.vercel.app"
+          node scripts/debug-domain-manifest.js "$PROJECT_NAME.vercel.app"
+
           echo "❤️ Favoriting frame for $PROJECT_NAME.vercel.app"
           node scripts/favorite-frame.js "$PROJECT_NAME.vercel.app"
           
