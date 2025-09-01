@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 import "dotenv/config";
-import { GoogleGenAI } from "@google/genai";
 import mime from "mime";
+import sharp from "sharp";
+import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import {
@@ -19,9 +20,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * Gemini Icon Generation Script for Farcaster Mini Apps
+ * OpenRouter Icon Generation Script for Farcaster Mini Apps
  *
- * This script generates AI-powered icons using Google's Gemini AI.
+ * This script generates AI-powered icons using OpenRouter's Gemini API.
  * Environment variables are automatically loaded from .env file using dotenv.
  *
  * Usage:
@@ -29,8 +30,15 @@ const __dirname = dirname(__filename);
  *   node scripts/generate-gemini-icon.js [prompt]
  */
 
-// Gemini model configuration
-const GEMINI_MODEL = "gemini-2.5-flash-image-preview";
+// OpenRouter API configuration
+const OPENROUTER_MODEL = "google/gemini-2.5-flash-image-preview:free";
+const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+// Icon dimensions (square format, optimized for Farcaster)
+const ICON_DIMENSIONS = {
+  width: 208,
+  height: 208,
+};
 
 // Retry configuration
 const MAX_RETRIES = 3;
@@ -48,6 +56,31 @@ function generateFilename(type, prefix = "gemini") {
 }
 
 /**
+ * Resize image to specified dimensions using Sharp
+ * @param {Buffer} imageBuffer - The image buffer to resize
+ * @param {number} width - Target width
+ * @param {number} height - Target height
+ * @returns {Promise<Buffer>} - Resized image buffer
+ */
+async function resizeImage(imageBuffer, width, height) {
+  try {
+    const resizedBuffer = await sharp(imageBuffer)
+      .resize(width, height, {
+        fit: "cover",
+        position: "center",
+      })
+      .png()
+      .toBuffer();
+
+    console.log(`🔧 Resized image to ${width}x${height}`);
+    return resizedBuffer;
+  } catch (error) {
+    console.warn(`⚠️  Failed to resize image: ${error.message}`);
+    return imageBuffer; // Return original if resize fails
+  }
+}
+
+/**
  * Save binary file to filesystem
  * @param {string} fileName - The filename to save
  * @param {Buffer} content - The file content buffer
@@ -55,15 +88,14 @@ function generateFilename(type, prefix = "gemini") {
  */
 function saveBinaryFile(fileName, content) {
   return new Promise((resolve, reject) => {
-    writeFileSync(fileName, content, (err) => {
-      if (err) {
-        console.error(`❌ Error writing file ${fileName}:`, err);
-        reject(err);
-        return;
-      }
+    try {
+      writeFileSync(fileName, content);
       console.log(`💾 File ${fileName} saved to file system.`);
       resolve();
-    });
+    } catch (err) {
+      console.error(`❌ Error writing file ${fileName}:`, err);
+      reject(err);
+    }
   });
 }
 
@@ -322,7 +354,67 @@ function sleep(seconds) {
 }
 
 /**
- * Generate icon using Google Gemini AI with retry logic
+ * Fallback to Flux icon generation script
+ * @param {string} prompt - The image generation prompt
+ * @returns {Promise<Object>} - The generation result with filename
+ */
+function fallbackToFluxScript(prompt) {
+  return new Promise((resolve, reject) => {
+    console.log("\n🔄 Falling back to Flux icon generation...");
+
+    const fluxScriptPath = join(__dirname, "generate-flux-icon.js");
+    const args = prompt ? [prompt] : [];
+
+    const fluxProcess = spawn("node", [fluxScriptPath, ...args], {
+      stdio: "inherit",
+      cwd: process.cwd(),
+    });
+
+    fluxProcess.on("close", (code) => {
+      if (code === 0) {
+        // Find the most recently generated icon
+        try {
+          const imagesDir = join(process.cwd(), "public/images");
+          const files = readdirSync(imagesDir);
+          const fluxIcons = files
+            .filter(
+              (file) => file.startsWith("flux-icon-") && file.endsWith(".png"),
+            )
+            .map((file) => ({
+              filename: file,
+              filePath: join(imagesDir, file),
+              mtime: readFileSync(join(imagesDir, file), { encoding: null })
+                .length,
+            }))
+            .sort((a, b) => b.mtime - a.mtime);
+
+          if (fluxIcons.length > 0) {
+            console.log("✅ Flux fallback completed successfully");
+            resolve({
+              filename: fluxIcons[0].filename,
+              filePath: fluxIcons[0].filePath,
+            });
+          } else {
+            reject(new Error("No Flux icon generated"));
+          }
+        } catch (error) {
+          reject(
+            new Error(`Failed to find generated Flux icon: ${error.message}`),
+          );
+        }
+      } else {
+        reject(new Error(`Flux script failed with exit code ${code}`));
+      }
+    });
+
+    fluxProcess.on("error", (error) => {
+      reject(new Error(`Failed to start Flux script: ${error.message}`));
+    });
+  });
+}
+
+/**
+ * Generate icon using OpenRouter API with retry logic
  * @param {string} prompt - The image generation prompt
  * @param {number} retryCount - Current retry attempt (default: 0)
  * @returns {Promise<Object>} - The generation result with filename
@@ -333,71 +425,78 @@ async function generateIcon(prompt, retryCount = 0) {
 
   if (isRetry) {
     console.log(
-      `\n🔄 Retry attempt ${retryCount}/${MAX_RETRIES} - Generating icon image with Gemini AI...`,
+      `\n🔄 Retry attempt ${retryCount}/${MAX_RETRIES} - Generating icon image with OpenRouter...`,
     );
   } else {
-    console.log(`\n🎨 Generating icon image with Gemini AI...`);
+    console.log(`\n🎨 Generating icon image with OpenRouter...`);
   }
   console.log(`📝 Prompt: ${prompt}`);
 
   try {
-    const ai = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-    });
-
-    const config = {
-      responseModalities: ["IMAGE", "TEXT"],
-    };
-
-    const contents = [
-      {
-        role: "user",
-        parts: [
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        messages: [
           {
-            text: prompt,
+            role: "user",
+            content: prompt,
           },
         ],
-      },
-    ];
-
-    const response = await ai.models.generateContentStream({
-      model: GEMINI_MODEL,
-      config,
-      contents,
+        modalities: ["image"],
+      }),
     });
 
-    let fileIndex = 0;
-    let savedFiles = [];
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
 
+    const data = await response.json();
     // Ensure images directory exists
     const imagesDir = join(process.cwd(), "public/images");
     if (!existsSync(imagesDir)) {
       mkdirSync(imagesDir, { recursive: true });
     }
 
-    for await (const chunk of response) {
-      if (
-        !chunk.candidates ||
-        !chunk.candidates[0].content ||
-        !chunk.candidates[0].content.parts
-      ) {
-        continue;
-      }
+    let savedFiles = [];
 
-      if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
-        const fileName = generateFilename("icon", "gemini") + `_${fileIndex++}`;
-        const inlineData = chunk.candidates[0].content.parts[0].inlineData;
-        const fileExtension =
-          mime.getExtension(inlineData.mimeType || "image/png") || "png";
-        const buffer = Buffer.from(inlineData.data || "", "base64");
+    // Process the response - OpenRouter returns images in message.images array
+    if (data.choices && data.choices[0] && data.choices[0].message) {
+      const message = data.choices[0].message;
 
-        const fullFileName = `${fileName}.${fileExtension}`;
-        const filePath = join(imagesDir, fullFileName);
+      // Check if there are images in the response
+      if (message.images && Array.isArray(message.images)) {
+        for (let i = 0; i < message.images.length; i++) {
+          const image = message.images[i];
+          if (image.image_url && image.image_url.url) {
+            // Handle base64 data URL
+            const imageUrl = image.image_url.url;
 
-        await saveBinaryFile(filePath, buffer);
-        savedFiles.push({ filename: fullFileName, filePath });
-      } else if (chunk.text) {
-        console.log("📄 AI Response:", chunk.text);
+            if (imageUrl.startsWith("data:image/")) {
+              // Extract base64 data from data URL
+              const base64Data = imageUrl.split(",")[1];
+              const buffer = Buffer.from(base64Data, "base64");
+
+              // Resize image to optimal dimensions
+              const resizedBuffer = await resizeImage(
+                buffer,
+                ICON_DIMENSIONS.width,
+                ICON_DIMENSIONS.height,
+              );
+
+              const fileName = generateFilename("icon", "gemini") + `_${i}`;
+              const fullFileName = `${fileName}.png`;
+              const filePath = join(imagesDir, fullFileName);
+
+              await saveBinaryFile(filePath, resizedBuffer);
+              savedFiles.push({ filename: fullFileName, filePath });
+            }
+          }
+        }
       }
     }
 
@@ -414,7 +513,6 @@ async function generateIcon(prompt, retryCount = 0) {
     }
   } catch (error) {
     // Check if it's a 429 rate limit error
-
     const is429Error =
       error.message.includes("429") ||
       error.message.includes("Too Many Requests") ||
@@ -424,9 +522,6 @@ async function generateIcon(prompt, retryCount = 0) {
       console.warn(
         `⚠️  Rate limit hit (429) - attempt ${retryCount + 1}/${MAX_RETRIES}`,
       );
-
-      // Log quota violation details
-      logQuotaViolations(error);
 
       // Parse retry delay from error message
       const retryDelay = parseRetryDelay(error);
@@ -451,18 +546,46 @@ async function generateIcon(prompt, retryCount = 0) {
 }
 
 /**
+ * Generate icon with fallback support
+ * @param {string} prompt - The image generation prompt
+ * @returns {Promise<Object>} - The generation result with filename
+ */
+async function generateIconWithFallback(prompt) {
+  try {
+    // Try OpenRouter first
+    return await generateIcon(prompt);
+  } catch (error) {
+    console.warn(`⚠️  OpenRouter generation failed: ${error.message}`);
+
+    // Check if we have the required API key for fallback
+    if (!process.env.TOGETHER_API_KEY) {
+      console.error("❌ No TOGETHER_API_KEY found for Flux fallback");
+      throw error;
+    }
+
+    try {
+      // Fallback to Flux script
+      return await fallbackToFluxScript(prompt);
+    } catch (fallbackError) {
+      console.error(`❌ Flux fallback also failed: ${fallbackError.message}`);
+      throw new Error(
+        `Both OpenRouter and Flux generation failed. OpenRouter: ${error.message}, Flux: ${fallbackError.message}`,
+      );
+    }
+  }
+}
+
+/**
  * Main function to generate Gemini icon
  */
 async function main() {
   try {
     // Validate API key
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
-      console.error("❌ Error: GEMINI_API_KEY is not set.");
-      console.error("   Please add your Gemini API key to your .env file.");
-      console.error(
-        "   Get your API key from: https://makersuite.google.com/app/apikey",
-      );
+      console.error("❌ Error: OPENROUTER_API_KEY is not set.");
+      console.error("   Please add your OpenRouter API key to your .env file.");
+      console.error("   Get your API key from: https://openrouter.ai/keys");
       process.exit(1);
     }
 
@@ -471,17 +594,17 @@ async function main() {
     const customPrompt = process.argv[2]; // Allow custom prompt as argument
     const prompt = customPrompt || generateIconPrompt(appName);
 
-    console.log("🎨 Gemini Icon Generator for Farcaster Mini Apps");
+    console.log("🎨 OpenRouter Icon Generator for Farcaster Mini Apps");
     console.log(`📱 App: ${appName}`);
-    console.log(`🤖 Model: ${GEMINI_MODEL}`);
+    console.log(`🤖 Model: ${OPENROUTER_MODEL}`);
 
     // Clear existing icons
     clearExistingIcons();
 
-    console.log("\n🚀 Initializing Google Gemini AI...");
+    console.log("\n🚀 Initializing OpenRouter API...");
 
-    // Generate icon
-    const iconResult = await generateIcon(prompt);
+    // Generate icon with fallback support
+    const iconResult = await generateIconWithFallback(prompt);
 
     // Update farcaster.json with new icon
     updateFarcasterConfigWithIcon(iconResult.filename);
