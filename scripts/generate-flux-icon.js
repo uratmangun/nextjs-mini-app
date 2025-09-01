@@ -189,9 +189,7 @@ function generateIconPrompt(appName) {
 - Simple, geometric shapes or clean typography
 - Suitable for a mobile app icon
 - No complex details that become unclear when scaled down
-- Colors should NOT be primarily purple - prefer blue, teal, green, or neutral colors
-- If text is included, make it bold and highly readable
-Generate a PNG image that would work perfectly as a Farcaster mini app icon.`;
+- If text is included, make it bold and highly readable`;
 }
 
 /**
