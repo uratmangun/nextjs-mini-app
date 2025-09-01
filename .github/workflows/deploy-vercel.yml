@@ -179,18 +179,6 @@ jobs:
           TEMP_DEPLOYMENT_URL=$(vercel deploy \
             --token="$VERCEL_TOKEN" \
             --yes \
-            --build-env FARCASTER_FID="$FARCASTER_FID" \
-            --build-env FARCASTER_CUSTODY_ADDRESS="$FARCASTER_CUSTODY_ADDRESS" \
-            --build-env FARCASTER_CUSTODY_PRIVATE_KEY="$FARCASTER_CUSTODY_PRIVATE_KEY" \
-            --build-env NEXT_PUBLIC_APP_DOMAIN="$NEXT_PUBLIC_APP_DOMAIN" \
-            --build-env FARCASTER_APP_NAME="$FARCASTER_APP_NAME" \
-            --build-env FARCASTER_APP_BUTTON_TITLE="$FARCASTER_APP_BUTTON_TITLE" \
-            --build-env FARCASTER_APP_DESCRIPTION="$FARCASTER_APP_DESCRIPTION" \
-            --build-env FARCASTER_SPLASH_BACKGROUND_COLOR="$FARCASTER_SPLASH_BACKGROUND_COLOR" \
-            --build-env TOGETHER_API_KEY="$TOGETHER_API_KEY" \
-            --build-env GEMINI_API_KEY="$GEMINI_API_KEY" \
-            --build-env FARCASTER_WEBHOOK_SECRET="$FARCASTER_WEBHOOK_SECRET" \
-            --build-env FLUX_GENERATION_DELAY="$FLUX_GENERATION_DELAY" \
             ./)
           
           echo "✅ Temporary deployment URL: $TEMP_DEPLOYMENT_URL"
@@ -293,18 +281,6 @@ jobs:
           vercel deploy --prod \
             --token="$VERCEL_TOKEN" \
             --yes \
-            --build-env FARCASTER_FID="$FARCASTER_FID" \
-            --build-env FARCASTER_CUSTODY_ADDRESS="$FARCASTER_CUSTODY_ADDRESS" \
-            --build-env FARCASTER_CUSTODY_PRIVATE_KEY="$FARCASTER_CUSTODY_PRIVATE_KEY" \
-            --build-env NEXT_PUBLIC_APP_DOMAIN="$NEXT_PUBLIC_APP_DOMAIN" \
-            --build-env FARCASTER_APP_NAME="$FARCASTER_APP_NAME" \
-            --build-env FARCASTER_APP_BUTTON_TITLE="$FARCASTER_APP_BUTTON_TITLE" \
-            --build-env FARCASTER_APP_DESCRIPTION="$FARCASTER_APP_DESCRIPTION" \
-            --build-env FARCASTER_SPLASH_BACKGROUND_COLOR="$FARCASTER_SPLASH_BACKGROUND_COLOR" \
-            --build-env TOGETHER_API_KEY="$TOGETHER_API_KEY" \
-            --build-env GEMINI_API_KEY="$GEMINI_API_KEY" \
-            --build-env FARCASTER_WEBHOOK_SECRET="$FARCASTER_WEBHOOK_SECRET" \
-            --build-env FLUX_GENERATION_DELAY="$FLUX_GENERATION_DELAY" \
             ./
 
       - name: "🏷️ Update repository homepage URL"
@@ -372,18 +348,6 @@ jobs:
           DEPLOYMENT_URL=$(vercel deploy \
             --token="$VERCEL_TOKEN" \
             --yes \
-            --build-env FARCASTER_FID="$FARCASTER_FID" \
-            --build-env FARCASTER_CUSTODY_ADDRESS="$FARCASTER_CUSTODY_ADDRESS" \
-            --build-env FARCASTER_CUSTODY_PRIVATE_KEY="$FARCASTER_CUSTODY_PRIVATE_KEY" \
-            --build-env NEXT_PUBLIC_APP_DOMAIN="$NEXT_PUBLIC_APP_DOMAIN" \
-            --build-env FARCASTER_APP_NAME="$FARCASTER_APP_NAME" \
-            --build-env FARCASTER_APP_BUTTON_TITLE="$FARCASTER_APP_BUTTON_TITLE" \
-            --build-env FARCASTER_APP_DESCRIPTION="$FARCASTER_APP_DESCRIPTION" \
-            --build-env FARCASTER_SPLASH_BACKGROUND_COLOR="$FARCASTER_SPLASH_BACKGROUND_COLOR" \
-            --build-env TOGETHER_API_KEY="$TOGETHER_API_KEY" \
-            --build-env GEMINI_API_KEY="$GEMINI_API_KEY" \
-            --build-env FARCASTER_WEBHOOK_SECRET="$FARCASTER_WEBHOOK_SECRET" \
-            --build-env FLUX_GENERATION_DELAY="$FLUX_GENERATION_DELAY" \
             ./)
           
           echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
