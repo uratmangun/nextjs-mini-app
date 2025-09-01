@@ -182,7 +182,16 @@ function getAppNameFromConfig() {
  * @returns {string} - The generated prompt
  */
 function generateIconPrompt(appName) {
-  return `Create a clean, minimalist app icon with the text '${appName}' in bold, modern typography. Square format, centered text, simple background, high contrast, professional design suitable for mobile app icon. Clean and readable at small sizes.`;
+  return `Create a clean, minimalist square app icon for "${appName}". The icon should be:
+- Modern and professional design
+- 1:1 aspect ratio (square format)
+- High contrast colors that work well at small sizes
+- Simple, geometric shapes or clean typography
+- Suitable for a mobile app icon
+- No complex details that become unclear when scaled down
+- Colors should NOT be primarily purple - prefer blue, teal, green, or neutral colors
+- If text is included, make it bold and highly readable
+Generate a PNG image that would work perfectly as a Farcaster mini app icon.`;
 }
 
 /**
