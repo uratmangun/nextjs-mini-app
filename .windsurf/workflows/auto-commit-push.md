@@ -44,10 +44,13 @@ For breaking changes, add `!` after the type/scope and include `BREAKING CHANGE:
 5. Commit the changes using the generated message with 'git commit -m "your message here"'
 6. Push the changes to the remote repository using 'git push'
 7. Check the current branch name using 'git branch --show-current'
-8. If the current branch is NOT main/master, create a pull request using GitHub CLI:
-   - Use 'gh pr create --title "PR_TITLE" --body "PR_BODY" --base main' (or master if that's the default)
-   - The PR title should match the commit message
-   - The PR body should include a summary of the changes made
+8. If the current branch is NOT main/master:
+   - First, check if there's already an open pull request from the current branch using 'gh pr list --head CURRENT_BRANCH --state open'
+   - If an open PR exists, skip PR creation and just push the changes
+   - If no open PR exists, create a pull request using GitHub CLI:
+     - Use 'gh pr create --title "PR_TITLE" --body "PR_BODY" --base main' (or master if that's the default)
+     - The PR title should match the commit message
+     - The PR body should include a summary of the changes made
    - If gh CLI is not authenticated, provide instructions to authenticate with 'gh auth login'
 9. Report the results of these operations including PR creation status.
 
