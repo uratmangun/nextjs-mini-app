@@ -1,10 +1,18 @@
 #!/usr/bin/env node
 
-import 'dotenv/config';
+import "dotenv/config";
 import Together from "together-ai";
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
+import sharp from "sharp";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  unlinkSync,
+} from "fs";
 
 // Get script directory for relative imports
 const __filename = fileURLToPath(import.meta.url);
@@ -23,15 +31,21 @@ const __dirname = dirname(__filename);
 
 // Flux API configuration
 const FLUX_MODEL = {
-  id: 'black-forest-labs/FLUX.1-schnell-Free',
-  displayName: 'FLUX.1-schnell (Free)',
-  defaultSteps: 4 // Fast generation with good quality
+  id: "black-forest-labs/FLUX.1-schnell-Free",
+  displayName: "FLUX.1-schnell (Free)",
+  defaultSteps: 4, // Fast generation with good quality
 };
 
 // Icon dimensions (square format, optimized for Farcaster)
 const ICON_DIMENSIONS = {
   width: 208,
-  height: 208
+  height: 208,
+};
+
+// Splash dimensions (square format, 200x200 for Farcaster splash)
+const SPLASH_DIMENSIONS = {
+  width: 200,
+  height: 200,
 };
 
 /**
@@ -40,8 +54,8 @@ const ICON_DIMENSIONS = {
  * @param {string} prefix - The filename prefix (flux)
  * @returns {string} - The generated filename
  */
-function generateFilename(type, prefix = 'flux') {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+function generateFilename(type, prefix = "flux") {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   return `${prefix}-${type}-${timestamp}.png`;
 }
 
@@ -49,17 +63,21 @@ function generateFilename(type, prefix = 'flux') {
  * Clears all existing icon images from the public/images directory
  */
 function clearExistingIcons() {
-  const imagesDir = join(process.cwd(), 'public/images');
+  const imagesDir = join(process.cwd(), "public/images");
 
   if (!existsSync(imagesDir)) {
     return;
   }
 
   const files = readdirSync(imagesDir);
-  const iconFiles = files.filter(file => file.startsWith('flux-icon-') && file.endsWith('.png'));
+  const iconFiles = files.filter(
+    (file) =>
+      (file.startsWith("flux-icon-") || file.startsWith("flux-splash-")) &&
+      file.endsWith(".png"),
+  );
 
-  console.log('🗑️  Clearing existing icon images...');
-  iconFiles.forEach(file => {
+  console.log("🗑️  Clearing existing icon and splash images...");
+  iconFiles.forEach((file) => {
     const filePath = join(imagesDir, file);
     try {
       unlinkSync(filePath);
@@ -79,32 +97,34 @@ function clearExistingIcons() {
 async function downloadAndSaveImage(base64Data, filename, isBase64 = false) {
   try {
     let buffer;
-    
+
     if (isBase64) {
       // Handle base64 data from Flux API
-      buffer = Buffer.from(base64Data, 'base64');
+      buffer = Buffer.from(base64Data, "base64");
     } else {
       // Handle URL (fallback for other image sources)
       const response = await fetch(base64Data);
       if (!response.ok) {
-        throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+        throw new Error(
+          `Failed to download image: ${response.status} ${response.statusText}`,
+        );
       }
       const arrayBuffer = await response.arrayBuffer();
       buffer = Buffer.from(arrayBuffer);
     }
 
-    const imagesDir = join(process.cwd(), 'public/images');
-    
+    const imagesDir = join(process.cwd(), "public/images");
+
     // Ensure images directory exists
     if (!existsSync(imagesDir)) {
       mkdirSync(imagesDir, { recursive: true });
     }
-    
+
     const filePath = join(imagesDir, filename);
     writeFileSync(filePath, buffer);
     console.log(`💾 Image saved: ${filename}`);
 
-    return { filename, filePath };
+    return { filename, filePath, buffer };
   } catch (error) {
     console.error(`❌ Failed to save image: ${error.message}`);
     throw error;
@@ -112,17 +132,58 @@ async function downloadAndSaveImage(base64Data, filename, isBase64 = false) {
 }
 
 /**
- * Generate a single icon using the Together AI API
+ * Resizes an image buffer using Sharp and saves it
+ * @param {Buffer} imageBuffer - The original image buffer
+ * @param {string} filename - Filename to save the resized image as
+ * @param {Object} dimensions - Target dimensions {width, height}
+ * @returns {Promise<Object>} - The result with filename and filepath
+ */
+async function resizeAndSaveImage(imageBuffer, filename, dimensions) {
+  try {
+    const imagesDir = join(process.cwd(), "public/images");
+
+    // Ensure images directory exists
+    if (!existsSync(imagesDir)) {
+      mkdirSync(imagesDir, { recursive: true });
+    }
+
+    // Resize image using Sharp
+    const resizedBuffer = await sharp(imageBuffer)
+      .resize(dimensions.width, dimensions.height, {
+        fit: "cover",
+        position: "center",
+      })
+      .png()
+      .toBuffer();
+
+    const filePath = join(imagesDir, filename);
+    writeFileSync(filePath, resizedBuffer);
+    console.log(
+      `🔄 Resized image saved: ${filename} (${dimensions.width}x${dimensions.height}px)`,
+    );
+
+    return { filename, filePath };
+  } catch (error) {
+    console.error(`❌ Failed to resize and save image: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Generate a single image using the Together AI API
  * @param {Together} together - The Together AI client instance
  * @param {string} prompt - The image generation prompt
  * @param {Object} dimensions - The image dimensions {width, height}
+ * @param {string} type - The image type (icon or splash)
  * @returns {Promise<Object>} - The generation result with filename
  */
-async function generateIcon(together, prompt, dimensions = ICON_DIMENSIONS) {
+async function generateImage(together, prompt, dimensions, type) {
   const startTime = Date.now();
-  console.log(`\n🎨 Generating icon image (${dimensions.width}x${dimensions.height})...`);
+  console.log(
+    `\n🎨 Generating ${type} image (${dimensions.width}x${dimensions.height})...`,
+  );
   console.log(`📝 Prompt: ${prompt}`);
-  
+
   try {
     const response = await together.images.create({
       model: FLUX_MODEL.id,
@@ -132,32 +193,48 @@ async function generateIcon(together, prompt, dimensions = ICON_DIMENSIONS) {
       steps: FLUX_MODEL.defaultSteps,
       n: 1,
       seed: Math.floor(Math.random() * 1000000),
-      response_format: 'b64_json'
+      response_format: "b64_json",
     });
 
     if (!response.data || response.data.length === 0) {
-      throw new Error('No image data received from API');
+      throw new Error("No image data received from API");
     }
 
     const imageData = response.data[0];
     if (!imageData.b64_json) {
-      throw new Error('No base64 image data in response');
+      throw new Error("No base64 image data in response");
     }
 
     // Generate filename with timestamp
-    const filename = generateFilename('icon', 'flux');
-    const result = await downloadAndSaveImage(imageData.b64_json, filename, true);
+    const filename = generateFilename(type, "flux");
+    const result = await downloadAndSaveImage(
+      imageData.b64_json,
+      filename,
+      true,
+    );
 
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(1);
-    
-    console.log(`✅ Generated icon image in ${duration}s: ${result.filename}`);
+
+    console.log(
+      `✅ Generated ${type} image in ${duration}s: ${result.filename}`,
+    );
     return result;
-    
   } catch (error) {
-    console.error(`❌ Failed to generate icon image:`, error.message);
+    console.error(`❌ Failed to generate ${type} image:`, error.message);
     throw error;
   }
+}
+
+/**
+ * Generate icon using the Together AI API
+ * @param {Together} together - The Together AI client instance
+ * @param {string} prompt - The image generation prompt
+ * @param {Object} dimensions - The image dimensions {width, height}
+ * @returns {Promise<Object>} - The generation result with filename
+ */
+async function generateIcon(together, prompt, dimensions = ICON_DIMENSIONS) {
+  return generateImage(together, prompt, dimensions, "icon");
 }
 
 /**
@@ -166,13 +243,15 @@ async function generateIcon(together, prompt, dimensions = ICON_DIMENSIONS) {
  */
 function getAppNameFromConfig() {
   try {
-    const configPath = join(process.cwd(), 'public/.well-known/farcaster.json');
-    const configContent = readFileSync(configPath, 'utf8');
+    const configPath = join(process.cwd(), "public/.well-known/farcaster.json");
+    const configContent = readFileSync(configPath, "utf8");
     const config = JSON.parse(configContent);
-    return config.miniapp?.name || 'Mini App';
+    return config.miniapp?.name || "Mini App";
   } catch (error) {
-    console.warn('⚠️  Warning: Could not read app name from farcaster.json, using default');
-    return 'Mini App';
+    console.warn(
+      "⚠️  Warning: Could not read app name from farcaster.json, using default",
+    );
+    return "Mini App";
   }
 }
 
@@ -193,91 +272,124 @@ function generateIconPrompt(appName) {
 }
 
 /**
- * Updates the farcaster.json file with the generated icon URL
+ * Updates the farcaster.json file with the generated image URLs
  * @param {string} iconFilename - The icon filename
+ * @param {string} splashFilename - The splash filename
  */
-function updateFarcasterConfigWithIcon(iconFilename) {
+function updateFarcasterConfigWithImages(iconFilename, splashFilename) {
   try {
-    const configPath = join(process.cwd(), 'public/.well-known/farcaster.json');
-    
+    const configPath = join(process.cwd(), "public/.well-known/farcaster.json");
+
     if (!existsSync(configPath)) {
-      console.warn('⚠️  Warning: farcaster.json file not found, skipping update');
+      console.warn(
+        "⚠️  Warning: farcaster.json file not found, skipping update",
+      );
       return;
     }
 
-    const configContent = readFileSync(configPath, 'utf8');
+    const configContent = readFileSync(configPath, "utf8");
     const config = JSON.parse(configContent);
 
     // Get domain from existing config or environment
-    const domain = config.miniapp?.homeUrl ? 
-      new URL(config.miniapp.homeUrl).origin : 
-      `https://${process.env.NEXT_PUBLIC_APP_DOMAIN}`;
+    const domain = config.miniapp?.homeUrl
+      ? new URL(config.miniapp.homeUrl).origin
+      : `https://${process.env.NEXT_PUBLIC_APP_DOMAIN}`;
 
-    // Update icon URL
-    if (config.miniapp && iconFilename) {
-      config.miniapp.iconUrl = `${domain}/images/${iconFilename}`;
+    // Update URLs
+    if (config.miniapp) {
+      if (iconFilename) {
+        config.miniapp.iconUrl = `${domain}/images/${iconFilename}`;
+      }
+      if (splashFilename) {
+        config.miniapp.splashImageUrl = `${domain}/images/${splashFilename}`;
+      }
     }
 
     // Write updated config
     writeFileSync(configPath, JSON.stringify(config, null, 2));
-    console.log('✅ Updated farcaster.json with new icon URL');
-    
+    console.log("✅ Updated farcaster.json with new image URLs");
   } catch (error) {
-    console.error('❌ Error updating farcaster.json:', error.message);
+    console.error("❌ Error updating farcaster.json:", error.message);
   }
 }
 
 /**
- * Main function to generate Flux icon
+ * Main function to generate Flux icon and resize it for splash
  */
 async function main() {
   try {
     // Validate API key
     const apiKey = process.env.TOGETHER_API_KEY;
     if (!apiKey) {
-      console.error('❌ Error: TOGETHER_API_KEY is not set.');
-      console.error('   Please add your Together AI API key to your .env file.');
-      console.error('   Get your API key from: https://api.together.xyz/settings/api-keys');
+      console.error("❌ Error: TOGETHER_API_KEY is not set.");
+      console.error(
+        "   Please add your Together AI API key to your .env file.",
+      );
+      console.error(
+        "   Get your API key from: https://api.together.xyz/settings/api-keys",
+      );
       process.exit(1);
     }
 
     // Get app name and generate prompt
     const appName = getAppNameFromConfig();
     const customPrompt = process.argv[2]; // Allow custom prompt as argument
-    const prompt = customPrompt || generateIconPrompt(appName);
+    const iconPrompt = customPrompt || generateIconPrompt(appName);
 
-    console.log('🎨 Flux Icon Generator for Farcaster Mini Apps');
+    console.log("🎨 Flux Image Generator for Farcaster Mini Apps");
     console.log(`📱 App: ${appName}`);
-    console.log(`🖼️  Dimensions: ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px`);
+    console.log(
+      `🖼️  Icon: ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px`,
+    );
+    console.log(
+      `🚀 Splash: ${SPLASH_DIMENSIONS.width}x${SPLASH_DIMENSIONS.height}px (resized from icon)`,
+    );
 
-    // Clear existing icons
+    // Clear existing images
     clearExistingIcons();
 
     // Initialize Together AI client
-    console.log('\n🚀 Initializing Together AI client...');
+    console.log("\n🚀 Initializing Together AI client...");
     const together = new Together({ apiKey });
 
     console.log(`\n📝 Model: ${FLUX_MODEL.displayName}`);
-    console.log(`📐 Dimensions: ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px`);
 
     // Generate icon
-    const iconResult = await generateIcon(together, prompt, ICON_DIMENSIONS);
-    
-    // Update farcaster.json with new icon
-    updateFarcasterConfigWithIcon(iconResult.filename);
+    console.log(
+      `\n📐 Icon Dimensions: ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px`,
+    );
+    const iconResult = await generateIcon(
+      together,
+      iconPrompt,
+      ICON_DIMENSIONS,
+    );
 
-    console.log('\n🎉 Icon generation complete!');
-    console.log(`   📁 Saved: public/images/${iconResult.filename}`);
-    console.log('   ✅ Updated: public/.well-known/farcaster.json');
+    // Resize icon for splash
+    console.log(
+      `\n🔄 Resizing icon to splash dimensions: ${SPLASH_DIMENSIONS.width}x${SPLASH_DIMENSIONS.height}px`,
+    );
+    const splashFilename = generateFilename("splash", "flux");
+    const splashResult = await resizeAndSaveImage(
+      iconResult.buffer,
+      splashFilename,
+      SPLASH_DIMENSIONS,
+    );
 
+    // Update farcaster.json with new images
+    updateFarcasterConfigWithImages(iconResult.filename, splashResult.filename);
+
+    console.log("\n🎉 Image generation complete!");
+    console.log(`   📁 Icon: public/images/${iconResult.filename}`);
+    console.log(`   📁 Splash: public/images/${splashResult.filename}`);
+    console.log("   ✅ Updated: public/.well-known/farcaster.json");
   } catch (error) {
-    console.error('\n❌ Error generating icon:');
-    console.error('💥', error.message);
-    
-    if (error.message.includes('429') || error.message.includes('rate limit')) {
-      console.error('⏰ Rate Limit: Please wait before making another request');
+    console.error("\n❌ Error generating images:");
+    console.error("💥", error.message);
+
+    if (error.message.includes("429") || error.message.includes("rate limit")) {
+      console.error("⏰ Rate Limit: Please wait before making another request");
     }
-    
+
     process.exit(1);
   }
 }
@@ -287,11 +399,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch(console.error);
 }
 
-export { 
+export {
   generateIcon,
+  generateImage,
   generateIconPrompt,
   getAppNameFromConfig,
   clearExistingIcons,
   downloadAndSaveImage,
-  updateFarcasterConfigWithIcon
+  resizeAndSaveImage,
+  updateFarcasterConfigWithImages,
 };

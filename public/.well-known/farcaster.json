@@ -7,11 +7,11 @@
   "miniapp": {
     "version": "1",
     "name": "Next.js Mini App",
-    "iconUrl": "https://701d7aa7e6cc.ngrok.app/images/flux-icon-2025-09-01T13-17-44-650Z.png",
+    "iconUrl": "https://701d7aa7e6cc.ngrok.app/images/flux-icon-2025-09-01T13-48-19-993Z.png",
     "homeUrl": "https://701d7aa7e6cc.ngrok.app",
     "imageUrl": "https://701d7aa7e6cc.ngrok.app/images/screenshot-embed-2025-08-26T00-05-50-692Z.png",
     "buttonTitle": "Launch App",
-    "splashImageUrl": "https://701d7aa7e6cc.ngrok.app/images/screenshot-splash-2025-08-26T00-05-55-662Z.png",
+    "splashImageUrl": "https://701d7aa7e6cc.ngrok.app/images/flux-splash-2025-09-01T13-48-19-995Z.png",
     "splashBackgroundColor": "#0ea5e9",
     "webhookUrl": "https://701d7aa7e6cc.ngrok.app/api/webhook",
     "subtitle": "A Next.js Farcaster Mini App",
