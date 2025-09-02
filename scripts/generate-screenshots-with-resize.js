@@ -161,10 +161,8 @@ async function takeScreenshot(url, viewport, filename) {
       },
       gotoOptions: { waitUntil: "networkidle2" },
       viewport: viewport,
-      waitForFunction: {
-        fn: "() => document.body && document.body.innerText.toLowerCase().includes('by uratmangun')",
-        timeout: 10000,
-      },
+      "waitForTimeout": 30000
+      
     };
 
     console.log(`📋 Request options: ${JSON.stringify(requestBody, null, 2)}`);
