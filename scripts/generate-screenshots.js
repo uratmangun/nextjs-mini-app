@@ -89,13 +89,13 @@ async function takeScreenshot(url, viewport, filename) {
 
     // Prepare request body
     const requestBody = {
-      url: fullUrl,
+      url: fullUrl+"?skip=true",
       setExtraHTTPHeaders: {
         "ngrok-skip-browser-warning": "true"
       },
       gotoOptions: { waitUntil: "networkidle2" },
       viewport: viewport,
-     "waitForTimeout": 30000
+   
     };
 
     console.log(`📋 Request options: ${JSON.stringify(requestBody, null, 2)}`);
