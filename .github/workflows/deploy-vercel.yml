@@ -175,13 +175,44 @@ jobs:
         run: |
           echo "🚢 Deploying temporary build to Vercel for screenshot generation..."
           
-          # Deploy to Vercel and capture the deployment URL
+          # Deploy to Vercel and capture the deployment URL from stdout
           TEMP_DEPLOYMENT_URL=$(vercel deploy \
             --token="$VERCEL_TOKEN" \
             --yes \
-            ./)
+            ./ 2>/dev/null)
+          
+          # Verify we got a valid URL
+          if [[ -z "$TEMP_DEPLOYMENT_URL" ]]; then
+            echo "❌ Failed to capture temporary deployment URL"
+            exit 1
+          fi
+          
+          # Ensure the URL is properly formatted
+          if [[ ! "$TEMP_DEPLOYMENT_URL" =~ ^https:// ]]; then
+            TEMP_DEPLOYMENT_URL="https://$TEMP_DEPLOYMENT_URL"
+          fi
           
           echo "✅ Temporary deployment URL: $TEMP_DEPLOYMENT_URL"
+          
+          # Get the actual production domain from Vercel API for use in subsequent steps
+          PROJECT_ID="${{ steps.generate-vercel-project.outputs.project_id }}"
+          echo "🔍 Fetching production domain for environment variables..."
+          DOMAINS_RESPONSE=$(curl -s -X GET \
+            "https://api.vercel.com/v9/projects/${PROJECT_ID}/domains?production=true" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Content-Type: application/json")
+          
+          # Extract the production domain name (the truncated one)
+          PRODUCTION_DOMAIN=$(echo "$DOMAINS_RESPONSE" | jq -r '.domains[0].name' 2>/dev/null || echo "")
+          
+          if [[ -z "$PRODUCTION_DOMAIN" || "$PRODUCTION_DOMAIN" == "null" ]]; then
+            echo "⚠️ Could not fetch production domain via API, using project name..."
+            PROJECT_NAME="${{ steps.generate-vercel-project.outputs.project_name }}"
+            PRODUCTION_DOMAIN="${PROJECT_NAME}.vercel.app"
+          fi
+          
+          echo "✅ Production domain for env vars: $PRODUCTION_DOMAIN"
+          echo "production_domain=$PRODUCTION_DOMAIN" >> $GITHUB_OUTPUT
           
           # Extract the deployment ID from the URL for deletion later
           # Vercel URLs are in format: https://[project]-[deploymentid].vercel.app
@@ -201,7 +232,7 @@ jobs:
           echo "📦 Deployment ID saved for cleanup: $DEPLOYMENT_ID"
       - name: "🔑 Generate Farcaster account association"
         env:
-            NEXT_PUBLIC_APP_DOMAIN: ${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
+            NEXT_PUBLIC_APP_DOMAIN: ${{ steps.deploy-temp.outputs.production_domain }}
             FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
             FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
             FARCASTER_CUSTODY_PRIVATE_KEY: ${{ secrets.FARCASTER_CUSTODY_PRIVATE_KEY }}
@@ -211,28 +242,31 @@ jobs:
       - name: "🎨 Generate AI icon"
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BROWSERLESS_API_URL: ${{ secrets.BROWSERLESS_API_URL }}
         run: |
+          # Export domain URLs for icon generation
+          PRODUCTION_DOMAIN="${{ steps.deploy-temp.outputs.production_domain }}"
+          export SCREENSHOT_URL="https://${PRODUCTION_DOMAIN}"
+          export NEXT_PUBLIC_APP_DOMAIN="$PRODUCTION_DOMAIN"
+          
           echo "🎨 Generating AI icon using Flux API"
+          echo "Using production domain: $PRODUCTION_DOMAIN"
           node scripts/generate-icon-with-fallback.js
 
       - name: "📸 Generate screenshots"
         env:
           BROWSERLESS_API_URL: ${{ secrets.BROWSERLESS_API_URL }}
         run: |
-          # Extract clean project name from deployment URL
-          DEPLOYMENT_URL="${{ steps.deploy-temp.outputs.deployment_url }}"
-          BASE_PROJECT_NAME=$(echo "$DEPLOYMENT_URL" | sed 's|https://||' | sed 's|\.vercel\.app.*||' | sed 's|-[a-z0-9]*$||')
+          # Use the actual production domain from the temporary deployment step
+          PRODUCTION_DOMAIN="${{ steps.deploy-temp.outputs.production_domain }}"
+          PRODUCTION_URL="https://${PRODUCTION_DOMAIN}"
           
-          # Use clean domain format
-          CLEAN_DOMAIN="${BASE_PROJECT_NAME}.vercel.app"
-          CLEAN_URL="https://${CLEAN_DOMAIN}"
-          
-          echo "📸 Generating screenshots from deployment: $CLEAN_DOMAIN"
-          echo "Using clean URL: $CLEAN_URL"
+          echo "📸 Generating screenshots from production domain: $PRODUCTION_DOMAIN"
+          echo "Using production URL: $PRODUCTION_URL"
           
           # Export for the script
-          export SCREENSHOT_URL="$CLEAN_URL"
-          export NEXT_PUBLIC_APP_DOMAIN="$CLEAN_DOMAIN"
+          export SCREENSHOT_URL="$PRODUCTION_URL"
+          export NEXT_PUBLIC_APP_DOMAIN="$PRODUCTION_DOMAIN"
           
           node scripts/generate-screenshots.js
 
@@ -242,7 +276,7 @@ jobs:
           NODE_ENV: production
           NEXT_TELEMETRY_DISABLED: 1
           NODE_OPTIONS: "--max-old-space-size=4096"
-          NEXT_PUBLIC_APP_DOMAIN: https://${{ steps.generate-vercel-project.outputs.project_name }}.vercel.app
+          NEXT_PUBLIC_APP_DOMAIN: https://${{ steps.deploy-temp.outputs.production_domain }}
           # Pass all Farcaster and API configuration for build-time generation
           FARCASTER_FID: ${{ secrets.FARCASTER_FID }}
           FARCASTER_CUSTODY_ADDRESS: ${{ secrets.FARCASTER_CUSTODY_ADDRESS }}
@@ -258,6 +292,7 @@ jobs:
 
       - name: "🚀 Deploy to Vercel (Production)"
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        id: deploy-production
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           # Farcaster Configuration
@@ -278,10 +313,44 @@ jobs:
           FLUX_GENERATION_DELAY: ${{ secrets.FLUX_GENERATION_DELAY }}
         run: |
           echo "Deploying to Vercel Production..."
-          vercel deploy --prod \
+          
+          # Deploy to production and capture deployment URL from stdout
+          DEPLOYMENT_URL=$(vercel deploy --prod \
             --token="$VERCEL_TOKEN" \
             --yes \
-            ./
+            ./ 2>/dev/null)
+          
+          # Verify we got a valid deployment URL
+          if [[ -z "$DEPLOYMENT_URL" ]]; then
+            echo "❌ Failed to capture deployment URL"
+            exit 1
+          fi
+          
+          # The deployment URL requires authentication, so we get the actual domain via API
+          PROJECT_ID="${{ steps.generate-vercel-project.outputs.project_id }}"
+          
+          # Get the actual production domain from Vercel API
+          echo "🔍 Fetching actual production domain from Vercel API..."
+          DOMAINS_RESPONSE=$(curl -s -X GET \
+            "https://api.vercel.com/v9/projects/${PROJECT_ID}/domains?production=true" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Content-Type: application/json")
+          
+          # Extract the production domain name (the truncated one)
+          PRODUCTION_DOMAIN=$(echo "$DOMAINS_RESPONSE" | jq -r '.domains[0].name' 2>/dev/null || echo "")
+          
+          if [[ -z "$PRODUCTION_DOMAIN" || "$PRODUCTION_DOMAIN" == "null" ]]; then
+            echo "⚠️ Could not fetch production domain via API, constructing from project name..."
+            PROJECT_NAME="${{ steps.generate-vercel-project.outputs.project_name }}"
+            PRODUCTION_URL="https://${PROJECT_NAME}.vercel.app"
+          else
+            PRODUCTION_URL="https://${PRODUCTION_DOMAIN}"
+            echo "✅ Retrieved actual production domain: $PRODUCTION_DOMAIN"
+          fi
+          
+          echo "📦 Deployment URL (requires auth): $DEPLOYMENT_URL"
+          echo "✅ Production domain URL: $PRODUCTION_URL"
+          echo "production_url=$PRODUCTION_URL" >> $GITHUB_OUTPUT
 
       - name: "🏷️ Update repository homepage URL"
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
@@ -289,16 +358,15 @@ jobs:
         with:
           github-token: ${{ secrets.PAT_TOKEN }}
           script: |
-            const projectName = '${{ steps.generate-vercel-project.outputs.project_name }}';
-            const homepageUrl = `https://${projectName}.vercel.app`;
+            const actualProductionUrl = '${{ steps.deploy-production.outputs.production_url }}';
             
-            console.log(`Updating repository homepage to: ${homepageUrl}`);
+            console.log(`Updating repository homepage to: ${actualProductionUrl}`);
             
             try {
               await github.rest.repos.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                homepage: homepageUrl
+                homepage: actualProductionUrl
               });
               console.log('Successfully updated repository homepage URL');
             } catch (error) {
@@ -311,16 +379,18 @@ jobs:
         env:
           FARCASTER_BEARER_TOKEN: ${{ secrets.FARCASTER_BEARER_TOKEN }}
         run: |
-          PROJECT_NAME="${{ steps.generate-vercel-project.outputs.project_name }}"
+          PRODUCTION_URL="${{ steps.deploy-production.outputs.production_url }}"
+          # Extract domain from full URL for scripts that expect domain only
+          DOMAIN=$(echo "$PRODUCTION_URL" | sed 's|https://||' | sed 's|http://||')
           
-          echo "❤️ Debugging domain manifest for $PROJECT_NAME.vercel.app"
-          node scripts/debug-domain-manifest.js "$PROJECT_NAME.vercel.app"
+          echo "❤️ Debugging domain manifest for $DOMAIN"
+          node scripts/debug-domain-manifest.js "$DOMAIN"
 
-          echo "❤️ Favoriting frame for $PROJECT_NAME.vercel.app"
-          node scripts/favorite-frame.js "$PROJECT_NAME.vercel.app"
+          echo "❤️ Favoriting frame for $DOMAIN" 
+          node scripts/favorite-frame.js "$DOMAIN"
           
           echo "🚀 Posting to Farcaster about the new deployment"
-          node scripts/post-to-farcaster.js "New version deployed at $PROJECT_NAME.vercel.app" "https://$PROJECT_NAME.vercel.app"
+          node scripts/post-to-farcaster.js "New version deployed at $DOMAIN" "$PRODUCTION_URL"
 
       - name: "🔍 Deploy to Vercel (Preview)"
         if: github.event_name == 'pull_request'
@@ -345,11 +415,25 @@ jobs:
           FLUX_GENERATION_DELAY: ${{ secrets.FLUX_GENERATION_DELAY }}
         run: |
           echo "Deploying to Vercel Preview..."
+          
+          # Deploy to preview and capture URL from stdout
           DEPLOYMENT_URL=$(vercel deploy \
             --token="$VERCEL_TOKEN" \
             --yes \
-            ./)
+            ./ 2>/dev/null)
           
+          # Verify we got a valid URL
+          if [[ -z "$DEPLOYMENT_URL" ]]; then
+            echo "❌ Failed to capture preview deployment URL"
+            exit 1
+          fi
+          
+          # Ensure the URL is properly formatted
+          if [[ ! "$DEPLOYMENT_URL" =~ ^https:// ]]; then
+            DEPLOYMENT_URL="https://$DEPLOYMENT_URL"
+          fi
+          
+          echo "✅ Preview deployment URL: $DEPLOYMENT_URL"
           echo "deployment_url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
 
       - name: "💬 Comment deployment URL"
