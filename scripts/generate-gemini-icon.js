@@ -40,6 +40,12 @@ const ICON_DIMENSIONS = {
   height: 208,
 };
 
+// Splash dimensions (square format, 200x200 for Farcaster splash)
+const SPLASH_DIMENSIONS = {
+  width: 200,
+  height: 200,
+};
+
 // Retry configuration
 const MAX_RETRIES = 3;
 const DEFAULT_RETRY_DELAY = 60; // Default 60 seconds if no retryDelay specified
@@ -100,7 +106,47 @@ function saveBinaryFile(fileName, content) {
 }
 
 /**
- * Clears all existing icon images from the public/images directory
+ * Resize and save image to specified dimensions
+ * @param {Buffer} imageBuffer - The source image buffer
+ * @param {string} filename - The target filename
+ * @param {Object} dimensions - Target dimensions {width, height}
+ * @returns {Promise<Object>} - The result with filename and filepath
+ */
+async function resizeAndSaveImage(imageBuffer, filename, dimensions) {
+  try {
+    const imagesDir = join(process.cwd(), "public/images");
+    
+    // Ensure images directory exists
+    if (!existsSync(imagesDir)) {
+      mkdirSync(imagesDir, { recursive: true });
+    }
+
+    // Resize the image
+    const resizedBuffer = await sharp(imageBuffer)
+      .resize(dimensions.width, dimensions.height, {
+        fit: "cover",
+        position: "center",
+      })
+      .png()
+      .toBuffer();
+
+    const filepath = join(imagesDir, `${filename}.png`);
+    writeFileSync(filepath, resizedBuffer);
+
+    console.log(`💾 Saved resized image: ${filename}.png`);
+    return {
+      filename: `${filename}.png`,
+      filepath,
+      buffer: resizedBuffer,
+    };
+  } catch (error) {
+    console.error(`❌ Failed to resize and save image: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Clears all existing icon and splash images from the public/images directory
  */
 function clearExistingIcons() {
   const imagesDir = join(process.cwd(), "public/images");
@@ -111,10 +157,10 @@ function clearExistingIcons() {
 
   const files = readdirSync(imagesDir);
   const iconFiles = files.filter(
-    (file) => file.startsWith("gemini-icon-") && file.endsWith(".png"),
+    (file) => (file.startsWith("gemini-icon-") || file.startsWith("gemini-splash-")) && file.endsWith(".png"),
   );
 
-  console.log("🗑️  Clearing existing icon images...");
+  console.log("🗑️  Clearing existing icon and splash images...");
   iconFiles.forEach((file) => {
     const filePath = join(imagesDir, file);
     try {
@@ -193,6 +239,48 @@ function updateFarcasterConfigWithIcon(iconFilename) {
     // Write updated config
     writeFileSync(configPath, JSON.stringify(config, null, 2));
     console.log("✅ Updated farcaster.json with new icon URL");
+  } catch (error) {
+    console.error("❌ Error updating farcaster.json:", error.message);
+  }
+}
+
+/**
+ * Updates the farcaster.json file with both icon and splash image URLs
+ * @param {string} iconFilename - The icon filename
+ * @param {string} splashFilename - The splash filename
+ */
+function updateFarcasterConfigWithImages(iconFilename, splashFilename) {
+  try {
+    const configPath = join(process.cwd(), "public/.well-known/farcaster.json");
+
+    if (!existsSync(configPath)) {
+      console.warn(
+        "⚠️  Warning: farcaster.json file not found, skipping update",
+      );
+      return;
+    }
+
+    const configContent = readFileSync(configPath, "utf8");
+    const config = JSON.parse(configContent);
+
+    // Get domain from existing config or environment
+    const domain = config.miniapp?.homeUrl
+      ? new URL(config.miniapp.homeUrl).origin
+      : `https://${process.env.NEXT_PUBLIC_APP_DOMAIN}`;
+
+    // Update icon and splash URLs
+    if (config.miniapp) {
+      if (iconFilename) {
+        config.miniapp.iconUrl = `${domain}/images/${iconFilename}`;
+      }
+      if (splashFilename) {
+        config.miniapp.imageUrl = `${domain}/images/${splashFilename}`;
+      }
+    }
+
+    // Write updated config
+    writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log("✅ Updated farcaster.json with new icon and splash URLs");
   } catch (error) {
     console.error("❌ Error updating farcaster.json:", error.message);
   }
@@ -353,65 +441,6 @@ function sleep(seconds) {
   });
 }
 
-/**
- * Fallback to Flux icon generation script
- * @param {string} prompt - The image generation prompt
- * @returns {Promise<Object>} - The generation result with filename
- */
-function fallbackToFluxScript(prompt) {
-  return new Promise((resolve, reject) => {
-    console.log("\n🔄 Falling back to Flux icon generation...");
-
-    const fluxScriptPath = join(__dirname, "generate-flux-icon.js");
-    const args = prompt ? [prompt] : [];
-
-    const fluxProcess = spawn("node", [fluxScriptPath, ...args], {
-      stdio: "inherit",
-      cwd: process.cwd(),
-    });
-
-    fluxProcess.on("close", (code) => {
-      if (code === 0) {
-        // Find the most recently generated icon
-        try {
-          const imagesDir = join(process.cwd(), "public/images");
-          const files = readdirSync(imagesDir);
-          const fluxIcons = files
-            .filter(
-              (file) => file.startsWith("flux-icon-") && file.endsWith(".png"),
-            )
-            .map((file) => ({
-              filename: file,
-              filePath: join(imagesDir, file),
-              mtime: readFileSync(join(imagesDir, file), { encoding: null })
-                .length,
-            }))
-            .sort((a, b) => b.mtime - a.mtime);
-
-          if (fluxIcons.length > 0) {
-            console.log("✅ Flux fallback completed successfully");
-            resolve({
-              filename: fluxIcons[0].filename,
-              filePath: fluxIcons[0].filePath,
-            });
-          } else {
-            reject(new Error("No Flux icon generated"));
-          }
-        } catch (error) {
-          reject(
-            new Error(`Failed to find generated Flux icon: ${error.message}`),
-          );
-        }
-      } else {
-        reject(new Error(`Flux script failed with exit code ${code}`));
-      }
-    });
-
-    fluxProcess.on("error", (error) => {
-      reject(new Error(`Failed to start Flux script: ${error.message}`));
-    });
-  });
-}
 
 /**
  * Generate icon using OpenRouter API with retry logic
@@ -493,7 +522,7 @@ async function generateIcon(prompt, retryCount = 0) {
               const filePath = join(imagesDir, fullFileName);
 
               await saveBinaryFile(filePath, resizedBuffer);
-              savedFiles.push({ filename: fullFileName, filePath });
+              savedFiles.push({ filename: fullFileName, filePath, buffer: resizedBuffer });
             }
           }
         }
@@ -545,35 +574,6 @@ async function generateIcon(prompt, retryCount = 0) {
   }
 }
 
-/**
- * Generate icon with fallback support
- * @param {string} prompt - The image generation prompt
- * @returns {Promise<Object>} - The generation result with filename
- */
-async function generateIconWithFallback(prompt) {
-  try {
-    // Try OpenRouter first
-    return await generateIcon(prompt);
-  } catch (error) {
-    console.warn(`⚠️  OpenRouter generation failed: ${error.message}`);
-
-    // Check if we have the required API key for fallback
-    if (!process.env.TOGETHER_API_KEY) {
-      console.error("❌ No TOGETHER_API_KEY found for Flux fallback");
-      throw error;
-    }
-
-    try {
-      // Fallback to Flux script
-      return await fallbackToFluxScript(prompt);
-    } catch (fallbackError) {
-      console.error(`❌ Flux fallback also failed: ${fallbackError.message}`);
-      throw new Error(
-        `Both OpenRouter and Flux generation failed. OpenRouter: ${error.message}, Flux: ${fallbackError.message}`,
-      );
-    }
-  }
-}
 
 /**
  * Main function to generate Gemini icon
@@ -597,20 +597,38 @@ async function main() {
     console.log("🎨 OpenRouter Icon Generator for Farcaster Mini Apps");
     console.log(`📱 App: ${appName}`);
     console.log(`🤖 Model: ${OPENROUTER_MODEL}`);
+    console.log(
+      `🖼️  Icon: ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px`,
+    );
+    console.log(
+      `🚀 Splash: ${SPLASH_DIMENSIONS.width}x${SPLASH_DIMENSIONS.height}px (resized from icon)`,
+    );
 
     // Clear existing icons
     clearExistingIcons();
 
     console.log("\n🚀 Initializing OpenRouter API...");
 
-    // Generate icon with fallback support
-    const iconResult = await generateIconWithFallback(prompt);
+    // Generate icon
+    const iconResult = await generateIcon(prompt);
 
-    // Update farcaster.json with new icon
-    updateFarcasterConfigWithIcon(iconResult.filename);
+    // Resize icon for splash
+    console.log(
+      `\n🔄 Resizing icon to splash dimensions: ${SPLASH_DIMENSIONS.width}x${SPLASH_DIMENSIONS.height}px`,
+    );
+    const splashFilename = generateFilename("splash", "gemini");
+    const splashResult = await resizeAndSaveImage(
+      iconResult.buffer,
+      splashFilename,
+      SPLASH_DIMENSIONS,
+    );
 
-    console.log("\n🎉 Icon generation complete!");
-    console.log(`   📁 Saved: public/images/${iconResult.filename}`);
+    // Update farcaster.json with new images
+    updateFarcasterConfigWithImages(iconResult.filename, splashResult.filename);
+
+    console.log("\n🎉 Image generation complete!");
+    console.log(`   📁 Icon: public/images/${iconResult.filename}`);
+    console.log(`   📁 Splash: public/images/${splashResult.filename}`);
     console.log("   ✅ Updated: public/.well-known/farcaster.json");
   } catch (error) {
     console.error("\n❌ Error generating icon:");

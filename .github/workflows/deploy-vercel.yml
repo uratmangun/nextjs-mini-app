@@ -210,10 +210,10 @@ jobs:
             node scripts/generate-farcaster-account-association.js generate
       - name: "🎨 Generate AI icon"
         env:
-          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           echo "🎨 Generating AI icon using Flux API"
-          node scripts/generate-flux-icon.js
+          node scripts/generate-icon-with-fallback.js
 
       - name: "📸 Generate screenshots"
         env:

@@ -255,15 +255,6 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Status Section */}
-      <div className="max-w-2xl mx-auto text-center space-y-2 pt-8">
-        <p className="text-sm text-muted-foreground">
-          {isInMiniApp ? '🟢 Running inside Farcaster' : '🟡 Running in browser'}
-        </p>
-        <p className="text-sm text-muted-foreground">
-           by uratmangun
-        </p>
-      </div>
     </div>
   );
 }

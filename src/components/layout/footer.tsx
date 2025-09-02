@@ -3,7 +3,7 @@ export function Footer() {
   
   return (
     <footer className="border-t bg-background">
-      <div className="container py-8 md:py-12">
+      <div className="container pt-8 md:pt-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="space-y-3">
             <h3 className="text-lg font-semibold">CloudNext</h3>
@@ -65,8 +65,11 @@ export function Footer() {
           </div>
         </div>
         
-        <div className="mt-8 pt-8 border-t text-center text-sm text-muted-foreground">
-          <p>&copy; {currentYear} CloudNext. All rights reserved.</p>
+        <div className="mt-8 pt-8 border-t">
+          <div className="max-w-2xl mx-auto text-center space-y-2">
+            <p className="text-sm text-muted-foreground">🟡 Running in browser</p>
+            <p className="text-sm text-muted-foreground">by uratmangun</p>
+          </div>
         </div>
       </div>
     </footer>

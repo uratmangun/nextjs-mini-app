@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import "dotenv/config";
+import sharp from "sharp";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import {
@@ -17,15 +18,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * Screenshot Generation Script for Farcaster Mini Apps
+ * Screenshot Generation Script with Resizing for Farcaster Mini Apps
  *
  * This script generates:
- * - Embed: Screenshot (768x512px viewport)
+ * - Original screenshot (768x512px viewport)
+ * - Icon: Resized to 208x208px using Sharp
+ * - Splash: Resized to 200x200px using Sharp
  * Environment variables are automatically loaded from .env file using dotenv.
  *
  * Usage:
- *   node scripts/generate-screenshots.js
- *   NEXT_PUBLIC_APP_DOMAIN=your-domain.ngrok.app node scripts/generate-screenshots.js
+ *   node scripts/generate-screenshots-with-resize.js
+ *   NEXT_PUBLIC_APP_DOMAIN=your-domain.ngrok.app node scripts/generate-screenshots-with-resize.js
  */
 
 // Generation delays (in seconds)
@@ -38,6 +41,26 @@ const GENERATION_DELAYS = {
 const SCREENSHOT_CONFIG = {
   baseUrl: process.env.BROWSERLESS_API_URL,
   delay: 2, // seconds between screenshots
+};
+
+// Icon dimensions (square format, optimized for Farcaster)
+const ICON_DIMENSIONS = {
+  width: 208,
+  height: 208,
+};
+
+// Splash dimensions (square format, 200x200 for Farcaster splash)
+const SPLASH_DIMENSIONS = {
+  width: 200,
+  height: 200,
+};
+
+// Screenshot viewport dimensions (larger for better quality)
+const SCREENSHOT_VIEWPORTS = {
+  embed: {
+    width: 768, // 3:2 ratio, multiple of 16
+    height: 512,
+  },
 };
 
 /**
@@ -63,20 +86,63 @@ function ensureProtocol(url) {
   return url;
 }
 
-// Screenshot viewport dimensions (larger for better quality)
-const SCREENSHOT_VIEWPORTS = {
-  embed: {
-    width: 768, // 3:2 ratio, multiple of 16
-    height: 512,
-  },
-};
+/**
+ * Generate timestamp-based filename
+ * @param {string} type - The image type (screenshot, icon, splash)
+ * @param {string} prefix - The filename prefix (screenshot)
+ * @returns {string} - The generated filename
+ */
+function generateFilename(type, prefix = "screenshot") {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `${prefix}-${type}-${timestamp}.png`;
+}
+
+/**
+ * Resize and save image to specified dimensions using Sharp
+ * @param {Buffer} imageBuffer - The source image buffer
+ * @param {string} filename - The target filename
+ * @param {Object} dimensions - Target dimensions {width, height}
+ * @returns {Promise<Object>} - The result with filename and filepath
+ */
+async function resizeAndSaveImage(imageBuffer, filename, dimensions) {
+  try {
+    const imagesDir = join(process.cwd(), "public/images");
+    
+    // Ensure images directory exists
+    if (!existsSync(imagesDir)) {
+      mkdirSync(imagesDir, { recursive: true });
+    }
+
+    // Resize the image
+    const resizedBuffer = await sharp(imageBuffer)
+      .resize(dimensions.width, dimensions.height, {
+        fit: "cover",
+        position: "center",
+      })
+      .png()
+      .toBuffer();
+
+    const filepath = join(imagesDir, `${filename}.png`);
+    writeFileSync(filepath, resizedBuffer);
+
+    console.log(`💾 Saved resized image: ${filename}.png (${dimensions.width}x${dimensions.height})`);
+    return {
+      filename: `${filename}.png`,
+      filepath,
+      buffer: resizedBuffer,
+    };
+  } catch (error) {
+    console.error(`❌ Failed to resize and save image: ${error.message}`);
+    throw error;
+  }
+}
 
 /**
  * Take a screenshot using the browserless API
  * @param {string} url - URL to screenshot
  * @param {Object} viewport - Viewport dimensions {width, height}
  * @param {string} filename - The output filename
- * @returns {Promise<string>} - The generated screenshot filename
+ * @returns {Promise<Buffer>} - The screenshot buffer
  */
 async function takeScreenshot(url, viewport, filename) {
   console.log(
@@ -130,7 +196,7 @@ async function takeScreenshot(url, viewport, filename) {
       );
     }
 
-    // Get image data and save directly to images directory
+    // Get image data and save original to images directory
     const imageBuffer = Buffer.from(await response.arrayBuffer());
     const outputDir = join(process.cwd(), "public", "images");
 
@@ -144,22 +210,11 @@ async function takeScreenshot(url, viewport, filename) {
     console.log(
       `✅ Screenshot saved: ${filename} (${(imageBuffer.length / 1024).toFixed(2)} KB)`,
     );
-    return filename;
+    return imageBuffer;
   } catch (error) {
     console.error("❌ Screenshot failed:", error.message);
     throw error;
   }
-}
-
-/**
- * Generate timestamp-based filename
- * @param {string} type - The image type (embed, splash)
- * @param {string} prefix - The filename prefix (screenshot)
- * @returns {string} - The generated filename
- */
-function generateFilename(type, prefix = "screenshot") {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  return `${prefix}-${type}-${timestamp}.png`;
 }
 
 /**
@@ -174,7 +229,9 @@ function clearExistingScreenshots() {
 
   const files = readdirSync(imagesDir);
   const screenshotFiles = files.filter(
-    (file) => file.startsWith("screenshot-embed-") && file.endsWith(".png"),
+    (file) => (file.startsWith("screenshot-embed-") || 
+               file.startsWith("screenshot-icon-") || 
+               file.startsWith("screenshot-splash-")) && file.endsWith(".png"),
   );
 
   if (screenshotFiles.length > 0) {
@@ -192,13 +249,58 @@ function clearExistingScreenshots() {
 }
 
 /**
- * Generate a single screenshot with specific viewport
+ * Updates the farcaster.json file with both icon and splash image URLs
+ * @param {string} domain - The domain to use for URLs
+ * @param {string} iconFilename - The icon filename
+ * @param {string} splashFilename - The splash filename
+ */
+function updateFarcasterConfigWithImages(domain, iconFilename, splashFilename) {
+  try {
+    const configPath = join(process.cwd(), "public/.well-known/farcaster.json");
+
+    if (!existsSync(configPath)) {
+      console.warn(
+        "⚠️  Warning: farcaster.json file not found, skipping update",
+      );
+      return;
+    }
+
+    const configContent = readFileSync(configPath, "utf8");
+    const config = JSON.parse(configContent);
+
+    // Get domain URL
+    const baseUrl = `https://${domain}`;
+
+    // Update icon and splash URLs
+    if (config.miniapp) {
+      if (iconFilename) {
+        config.miniapp.iconUrl = `${baseUrl}/images/${iconFilename}`;
+      }
+      if (splashFilename) {
+        config.miniapp.splashImageUrl = `${baseUrl}/images/${splashFilename}`;
+      }
+
+      // Update home URL to match domain
+      config.miniapp.homeUrl = baseUrl;
+      config.miniapp.webhookUrl = `${baseUrl}/api/webhook`;
+    }
+
+    // Write updated config
+    writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log("✅ Updated farcaster.json with new icon and splash URLs");
+  } catch (error) {
+    console.error("❌ Error updating farcaster.json:", error.message);
+  }
+}
+
+/**
+ * Generate a screenshot with resized versions
  * @param {string} url - The URL to screenshot
  * @param {Object} viewport - The viewport dimensions {width, height}
- * @param {string} type - The image type (embed, splash)
- * @returns {Promise<Object>} - The screenshot result with filename
+ * @param {string} type - The image type (embed)
+ * @returns {Promise<Object>} - The screenshot results
  */
-async function generateSingleScreenshot(url, viewport, type) {
+async function generateScreenshotWithResize(url, viewport, type) {
   const startTime = Date.now();
   console.log(
     `\n📸 Taking ${type} screenshot (${viewport.width}x${viewport.height})...`,
@@ -206,14 +308,42 @@ async function generateSingleScreenshot(url, viewport, type) {
   console.log(`🌐 URL: ${url}`);
 
   try {
-    const filename = generateFilename(type, "screenshot");
-    await takeScreenshot(url, viewport, filename);
+    // Generate original screenshot
+    const originalFilename = generateFilename(type, "screenshot");
+    const imageBuffer = await takeScreenshot(url, viewport, originalFilename);
+
+    // Generate resized icon (208x208)
+    console.log(
+      `\n🔄 Resizing to icon dimensions: ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px`,
+    );
+    const iconFilename = generateFilename("icon", "screenshot");
+    const iconResult = await resizeAndSaveImage(
+      imageBuffer,
+      iconFilename,
+      ICON_DIMENSIONS,
+    );
+
+    // Generate resized splash (200x200)
+    console.log(
+      `\n🔄 Resizing to splash dimensions: ${SPLASH_DIMENSIONS.width}x${SPLASH_DIMENSIONS.height}px`,
+    );
+    const splashFilename = generateFilename("splash", "screenshot");
+    const splashResult = await resizeAndSaveImage(
+      imageBuffer,
+      splashFilename,
+      SPLASH_DIMENSIONS,
+    );
 
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(1);
 
-    console.log(`✅ Generated ${type} screenshot in ${duration}s: ${filename}`);
-    return { filename: filename };
+    console.log(`✅ Generated ${type} screenshot and resized versions in ${duration}s`);
+    
+    return { 
+      original: originalFilename,
+      icon: iconResult.filename,
+      splash: splashResult.filename,
+    };
   } catch (error) {
     console.error(`❌ Failed to generate ${type} screenshot:`, error.message);
     throw error;
@@ -221,15 +351,15 @@ async function generateSingleScreenshot(url, viewport, type) {
 }
 
 /**
- * Generate a screenshot with retry logic
+ * Generate a screenshot with retry logic and resizing
  * @param {string} url - The URL to screenshot
  * @param {Object} viewport - The viewport dimensions {width, height}
- * @param {string} type - The image type (embed, splash)
+ * @param {string} type - The image type (embed)
  * @param {number} maxAttempts - Maximum number of retry attempts (default: 3)
  * @param {number} retryDelaySeconds - Delay between retries in seconds (default: 5)
  * @returns {Promise<Object>} - The screenshot result with filename or error summary
  */
-async function generateScreenshotWithRetry(
+async function generateScreenshotWithRetryAndResize(
   url,
   viewport,
   type,
@@ -245,7 +375,7 @@ async function generateScreenshotWithRetry(
     );
 
     try {
-      const result = await generateSingleScreenshot(url, viewport, type);
+      const result = await generateScreenshotWithResize(url, viewport, type);
 
       if (attempt > 1) {
         console.log(`🎉 Screenshot successful on attempt ${attempt}!`);
@@ -296,49 +426,7 @@ async function generateScreenshotWithRetry(
 }
 
 /**
- * Updates the farcaster.json file with the screenshot URLs
- * @param {string} domain - The NEXT_PUBLIC_APP_DOMAIN to use
- * @param {object} screenshotFilenames - Object containing filenames for embed and splash screenshots
- */
-function updateFarcasterConfig(domain, screenshotFilenames) {
-  try {
-    const configPath = join(process.cwd(), "public/.well-known/farcaster.json");
-
-    if (!existsSync(configPath)) {
-      console.warn(
-        "⚠️  Warning: farcaster.json file not found, skipping update",
-      );
-      return;
-    }
-
-    const configContent = readFileSync(configPath, "utf8");
-    const config = JSON.parse(configContent);
-
-    // Update screenshot URLs with the provided domain
-    const baseUrl = `https://${domain}`;
-
-    if (config.miniapp) {
-      if (screenshotFilenames.embed) {
-        config.miniapp.imageUrl = `${baseUrl}/images/${screenshotFilenames.embed}`;
-      }
-
-      // Update home URL to match domain
-      config.miniapp.homeUrl = baseUrl;
-      config.miniapp.webhookUrl = `${baseUrl}/api/webhook`;
-    }
-
-    // Write updated config
-    writeFileSync(configPath, JSON.stringify(config, null, 2));
-    console.log(
-      "✅ Updated farcaster.json with new screenshot URLs and domain",
-    );
-  } catch (error) {
-    console.error("❌ Error updating farcaster.json:", error.message);
-  }
-}
-
-/**
- * Main screenshot generation function
+ * Main screenshot generation function with resizing
  */
 async function generateScreenshots() {
   try {
@@ -360,11 +448,13 @@ async function generateScreenshots() {
       process.exit(1);
     }
 
-    console.log("📸 Screenshot Generator for Farcaster Mini Apps");
+    console.log("📸 Screenshot Generator with Resizing for Farcaster Mini Apps");
     console.log(`🌐 Taking screenshots of: ${appDomain}`);
 
-    console.log("\n🎯 Generating screenshots for your Mini App...");
-    console.log("   📱 Embed: Screenshot (768x512px viewport)");
+    console.log("\n🎯 Generating screenshots and resized versions...");
+    console.log("   📱 Original: Screenshot (768x512px viewport)");
+    console.log(`   🖼️  Icon: Resized to ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px`);
+    console.log(`   🚀 Splash: Resized to ${SPLASH_DIMENSIONS.width}x${SPLASH_DIMENSIONS.height}px`);
 
     // Clear existing screenshots
     clearExistingScreenshots();
@@ -373,35 +463,21 @@ async function generateScreenshots() {
     console.log("=".repeat(50));
     console.log(`🔗 Screenshot URL: ${appDomain}`);
     console.log(
-      `🖼️  Embed: ${SCREENSHOT_VIEWPORTS.embed.width}x${SCREENSHOT_VIEWPORTS.embed.height}px (Screenshot)`,
+      `🖼️  Original: ${SCREENSHOT_VIEWPORTS.embed.width}x${SCREENSHOT_VIEWPORTS.embed.height}px (Screenshot)`,
     );
+    console.log(`🎯 Icon: ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px (Resized)`);
+    console.log(`🚀 Splash: ${SPLASH_DIMENSIONS.width}x${SPLASH_DIMENSIONS.height}px (Resized)`);
     console.log("=".repeat(50));
 
     console.log("\n⏳ Generating images with retry logic...");
     const overallStartTime = Date.now();
 
     // Generate screenshots with retry logic (3 attempts, 5-second delay)
-    const embedResult = await generateScreenshotWithRetry(
+    const embedResult = await generateScreenshotWithRetryAndResize(
       appDomain,
       SCREENSHOT_VIEWPORTS.embed,
       "embed",
     );
-
-    // Check results and handle failures
-    const successfulScreenshots = {};
-    const allFailures = [];
-
-    if (embedResult.success) {
-      successfulScreenshots.embed = embedResult.result.filename;
-      console.log(
-        `✅ Embed screenshot succeeded after ${embedResult.attempts} attempt(s)`,
-      );
-    } else {
-      console.error(
-        `💥 Embed screenshot failed after ${embedResult.attempts} attempts`,
-      );
-      allFailures.push(...embedResult.failures);
-    }
 
     const overallEndTime = Date.now();
     const totalDuration = ((overallEndTime - overallStartTime) / 1000).toFixed(
@@ -411,43 +487,24 @@ async function generateScreenshots() {
     // Print final results
     if (embedResult.success) {
       // Successful - update config and show success
-      updateFarcasterConfig(
+      updateFarcasterConfigWithImages(
         process.env.NEXT_PUBLIC_APP_DOMAIN,
-        successfulScreenshots,
+        embedResult.result.icon,
+        embedResult.result.splash,
       );
 
-      console.log("\n🎉 Screenshot generation complete!");
-      console.log(`   📁 Embed: public/images/${successfulScreenshots.embed}`);
+      console.log("\n🎉 Screenshot generation with resizing complete!");
+      console.log(`   📁 Original: public/images/${embedResult.result.original}`);
+      console.log(`   📁 Icon: public/images/${embedResult.result.icon}`);
+      console.log(`   📁 Splash: public/images/${embedResult.result.splash}`);
       console.log(`   ⏱️  Total time: ${totalDuration}s`);
       console.log("   ✅ Updated: public/.well-known/farcaster.json");
-    } else if (Object.keys(successfulScreenshots).length > 0) {
-      // Partial success
-      updateFarcasterConfig(
-        process.env.NEXT_PUBLIC_APP_DOMAIN,
-        successfulScreenshots,
-      );
-
-      console.log("\n⚠️  Partial screenshot generation complete:");
-      Object.entries(successfulScreenshots).forEach(([type, filename]) => {
-        console.log(`   ✅ ${type}: public/images/${filename}`);
-      });
-      console.log(`   ⏱️  Total time: ${totalDuration}s`);
-      console.log("   ✅ Updated: public/.well-known/farcaster.json (partial)");
-
-      // Show failure summary
-      console.log("\n💥 Failures summary:");
-      allFailures.forEach((failure) => {
-        console.log(
-          `   ❌ ${failure.type} attempt ${failure.attempt} at ${failure.timestamp}:`,
-        );
-        console.log(`      ${failure.error}`);
-      });
     } else {
       // Complete failure
       console.log("\n💥 Screenshot generation failed completely!");
       console.log(`   ⏱️  Total time: ${totalDuration}s`);
       console.log("\n📋 Complete failure summary:");
-      allFailures.forEach((failure) => {
+      embedResult.failures.forEach((failure) => {
         console.log(
           `   ❌ ${failure.type} (${failure.viewport}) attempt ${failure.attempt} at ${failure.timestamp}:`,
         );
@@ -471,10 +528,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 
 export {
-  generateSingleScreenshot,
-  generateScreenshotWithRetry,
+  generateScreenshotWithResize,
+  generateScreenshotWithRetryAndResize,
   takeScreenshot,
   clearExistingScreenshots,
-  updateFarcasterConfig,
+  updateFarcasterConfigWithImages,
   generateScreenshots,
+  resizeAndSaveImage,
 };

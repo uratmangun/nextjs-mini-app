@@ -335,8 +335,7 @@ async function main() {
     const appName = getAppNameFromConfig();
     const customPrompt = process.argv[2]; // Allow custom prompt as argument
     const iconPrompt = customPrompt || generateIconPrompt(appName);
-
-    console.log("🎨 Flux Image Generator for Farcaster Mini Apps");
+    console.log("🎨 Flux Icon Generator");
     console.log(`📱 App: ${appName}`);
     console.log(
       `🖼️  Icon: ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px`,
@@ -354,34 +353,74 @@ async function main() {
 
     console.log(`\n📝 Model: ${FLUX_MODEL.displayName}`);
 
-    // Generate icon
-    console.log(
-      `\n📐 Icon Dimensions: ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px`,
-    );
-    const iconResult = await generateIcon(
-      together,
-      iconPrompt,
-      ICON_DIMENSIONS,
-    );
+    const MAX_RETRIES = 3;
+    let lastError = null;
 
-    // Resize icon for splash
-    console.log(
-      `\n🔄 Resizing icon to splash dimensions: ${SPLASH_DIMENSIONS.width}x${SPLASH_DIMENSIONS.height}px`,
-    );
-    const splashFilename = generateFilename("splash", "flux");
-    const splashResult = await resizeAndSaveImage(
-      iconResult.buffer,
-      splashFilename,
-      SPLASH_DIMENSIONS,
-    );
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        console.log(`\n🔄 Attempt ${attempt}/${MAX_RETRIES}`);
+        
+        // Generate icon
+        console.log(
+          `\n📐 Icon Dimensions: ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px`,
+        );
+        const iconResult = await generateIcon(
+          together,
+          iconPrompt,
+          ICON_DIMENSIONS,
+        );
 
-    // Update farcaster.json with new images
-    updateFarcasterConfigWithImages(iconResult.filename, splashResult.filename);
+        // Resize icon for splash
+        console.log(
+          `\n🔄 Resizing icon to splash dimensions: ${SPLASH_DIMENSIONS.width}x${SPLASH_DIMENSIONS.height}px`,
+        );
+        const splashFilename = generateFilename("splash", "flux");
+        const splashResult = await resizeAndSaveImage(
+          iconResult.buffer,
+          splashFilename,
+          SPLASH_DIMENSIONS,
+        );
 
-    console.log("\n🎉 Image generation complete!");
-    console.log(`   📁 Icon: public/images/${iconResult.filename}`);
-    console.log(`   📁 Splash: public/images/${splashResult.filename}`);
-    console.log("   ✅ Updated: public/.well-known/farcaster.json");
+        // Update farcaster.json with new images
+        updateFarcasterConfigWithImages(iconResult.filename, splashResult.filename);
+
+        console.log("\n🎉 Image generation complete!");
+        console.log(`   📁 Icon: public/images/${iconResult.filename}`);
+        console.log(`   📁 Splash: public/images/${splashResult.filename}`);
+        console.log("   ✅ Updated: public/.well-known/farcaster.json");
+        
+        // Success! Exit the retry loop
+        return;
+        
+      } catch (error) {
+        lastError = error;
+        console.error(`\n❌ Attempt ${attempt}/${MAX_RETRIES} failed:`);
+        console.error("💥", error.message);
+
+        if (attempt < MAX_RETRIES) {
+          let waitTime = 2000; // Base wait time of 2 seconds
+        
+          if (error.message.includes("429") || error.message.includes("rate limit")) {
+            waitTime = 105000; // Wait 105 seconds for rate limit errors
+            console.error("⏰ Rate Limit: Waiting 105 seconds before retry...");
+          } else {
+            console.error(`⏳ Waiting ${waitTime/1000} seconds before retry...`);
+          }
+        
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
+    }
+
+    // All retries exhausted
+    console.error(`\n❌ All ${MAX_RETRIES} attempts failed. Final error:`);
+    console.error("💥", lastError.message);
+
+    if (lastError.message.includes("429") || lastError.message.includes("rate limit")) {
+      console.error("⏰ Rate Limit: Please wait before making another request");
+    }
+
+    process.exit(1);
   } catch (error) {
     console.error("\n❌ Error generating images:");
     console.error("💥", error.message);
