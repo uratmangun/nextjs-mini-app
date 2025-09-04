@@ -2,7 +2,7 @@
 
 import "dotenv/config";
 import Together from "together-ai";
-import sharp from "sharp";
+import { Jimp } from "jimp";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import {
@@ -132,7 +132,7 @@ async function downloadAndSaveImage(base64Data, filename, isBase64 = false) {
 }
 
 /**
- * Resizes an image buffer using Sharp and saves it
+ * Resizes an image buffer using Jimp and saves it
  * @param {Buffer} imageBuffer - The original image buffer
  * @param {string} filename - Filename to save the resized image as
  * @param {Object} dimensions - Target dimensions {width, height}
@@ -147,14 +147,13 @@ async function resizeAndSaveImage(imageBuffer, filename, dimensions) {
       mkdirSync(imagesDir, { recursive: true });
     }
 
-    // Resize image using Sharp
-    const resizedBuffer = await sharp(imageBuffer)
-      .resize(dimensions.width, dimensions.height, {
-        fit: "cover",
-        position: "center",
-      })
-      .png()
-      .toBuffer();
+    // Resize image using Jimp
+    const image = await Jimp.read(imageBuffer);
+    const resizedImage = image.resize({
+      w: dimensions.width,
+      h: dimensions.height,
+    });
+    const resizedBuffer = await resizedImage.getBuffer("image/png");
 
     const filePath = join(imagesDir, filename);
     writeFileSync(filePath, resizedBuffer);
@@ -359,7 +358,7 @@ async function main() {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         console.log(`\n🔄 Attempt ${attempt}/${MAX_RETRIES}`);
-        
+
         // Generate icon
         console.log(
           `\n📐 Icon Dimensions: ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px`,
@@ -382,16 +381,18 @@ async function main() {
         );
 
         // Update farcaster.json with new images
-        updateFarcasterConfigWithImages(iconResult.filename, splashResult.filename);
+        updateFarcasterConfigWithImages(
+          iconResult.filename,
+          splashResult.filename,
+        );
 
         console.log("\n🎉 Image generation complete!");
         console.log(`   📁 Icon: public/images/${iconResult.filename}`);
         console.log(`   📁 Splash: public/images/${splashResult.filename}`);
         console.log("   ✅ Updated: public/.well-known/farcaster.json");
-        
+
         // Success! Exit the retry loop
         return;
-        
       } catch (error) {
         lastError = error;
         console.error(`\n❌ Attempt ${attempt}/${MAX_RETRIES} failed:`);
@@ -399,15 +400,20 @@ async function main() {
 
         if (attempt < MAX_RETRIES) {
           let waitTime = 2000; // Base wait time of 2 seconds
-        
-          if (error.message.includes("429") || error.message.includes("rate limit")) {
+
+          if (
+            error.message.includes("429") ||
+            error.message.includes("rate limit")
+          ) {
             waitTime = 105000; // Wait 105 seconds for rate limit errors
             console.error("⏰ Rate Limit: Waiting 105 seconds before retry...");
           } else {
-            console.error(`⏳ Waiting ${waitTime/1000} seconds before retry...`);
+            console.error(
+              `⏳ Waiting ${waitTime / 1000} seconds before retry...`,
+            );
           }
-        
-          await new Promise(resolve => setTimeout(resolve, waitTime));
+
+          await new Promise((resolve) => setTimeout(resolve, waitTime));
         }
       }
     }
@@ -416,7 +422,10 @@ async function main() {
     console.error(`\n❌ All ${MAX_RETRIES} attempts failed. Final error:`);
     console.error("💥", lastError.message);
 
-    if (lastError.message.includes("429") || lastError.message.includes("rate limit")) {
+    if (
+      lastError.message.includes("429") ||
+      lastError.message.includes("rate limit")
+    ) {
       console.error("⏰ Rate Limit: Please wait before making another request");
     }
 

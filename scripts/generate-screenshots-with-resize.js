@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import "dotenv/config";
-import sharp from "sharp";
+import { Jimp } from "jimp";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import {
@@ -98,7 +98,7 @@ function generateFilename(type, prefix = "screenshot") {
 }
 
 /**
- * Resize and save image to specified dimensions using Sharp
+ * Resize and save image to specified dimensions using Jimp
  * @param {Buffer} imageBuffer - The source image buffer
  * @param {string} filename - The target filename
  * @param {Object} dimensions - Target dimensions {width, height}
@@ -107,25 +107,26 @@ function generateFilename(type, prefix = "screenshot") {
 async function resizeAndSaveImage(imageBuffer, filename, dimensions) {
   try {
     const imagesDir = join(process.cwd(), "public/images");
-    
+
     // Ensure images directory exists
     if (!existsSync(imagesDir)) {
       mkdirSync(imagesDir, { recursive: true });
     }
 
-    // Resize the image
-    const resizedBuffer = await sharp(imageBuffer)
-      .resize(dimensions.width, dimensions.height, {
-        fit: "cover",
-        position: "center",
-      })
-      .png()
-      .toBuffer();
+    // Resize the image using Jimp
+    const image = await Jimp.read(imageBuffer);
+    const resizedImage = image.resize({
+      w: dimensions.width,
+      h: dimensions.height,
+    });
+    const resizedBuffer = await resizedImage.getBuffer("image/png");
 
     const filepath = join(imagesDir, `${filename}.png`);
     writeFileSync(filepath, resizedBuffer);
 
-    console.log(`💾 Saved resized image: ${filename}.png (${dimensions.width}x${dimensions.height})`);
+    console.log(
+      `💾 Saved resized image: ${filename}.png (${dimensions.width}x${dimensions.height})`,
+    );
     return {
       filename: `${filename}.png`,
       filepath,
@@ -155,13 +156,12 @@ async function takeScreenshot(url, viewport, filename) {
 
     // Prepare request body
     const requestBody = {
-      url: fullUrl+"?skip=true",
+      url: fullUrl + "?skip=true",
       setExtraHTTPHeaders: {
-        "ngrok-skip-browser-warning": "true"
+        "ngrok-skip-browser-warning": "true",
       },
       gotoOptions: { waitUntil: "networkidle2" },
       viewport: viewport,
-   
     };
 
     console.log(`📋 Request options: ${JSON.stringify(requestBody, null, 2)}`);
@@ -226,9 +226,11 @@ function clearExistingScreenshots() {
 
   const files = readdirSync(imagesDir);
   const screenshotFiles = files.filter(
-    (file) => (file.startsWith("screenshot-embed-") || 
-               file.startsWith("screenshot-icon-") || 
-               file.startsWith("screenshot-splash-")) && file.endsWith(".png"),
+    (file) =>
+      (file.startsWith("screenshot-embed-") ||
+        file.startsWith("screenshot-icon-") ||
+        file.startsWith("screenshot-splash-")) &&
+      file.endsWith(".png"),
   );
 
   if (screenshotFiles.length > 0) {
@@ -334,9 +336,11 @@ async function generateScreenshotWithResize(url, viewport, type) {
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(1);
 
-    console.log(`✅ Generated ${type} screenshot and resized versions in ${duration}s`);
-    
-    return { 
+    console.log(
+      `✅ Generated ${type} screenshot and resized versions in ${duration}s`,
+    );
+
+    return {
       original: originalFilename,
       icon: iconResult.filename,
       splash: splashResult.filename,
@@ -445,13 +449,19 @@ async function generateScreenshots() {
       process.exit(1);
     }
 
-    console.log("📸 Screenshot Generator with Resizing for Farcaster Mini Apps");
+    console.log(
+      "📸 Screenshot Generator with Resizing for Farcaster Mini Apps",
+    );
     console.log(`🌐 Taking screenshots of: ${appDomain}`);
 
     console.log("\n🎯 Generating screenshots and resized versions...");
     console.log("   📱 Original: Screenshot (768x512px viewport)");
-    console.log(`   🖼️  Icon: Resized to ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px`);
-    console.log(`   🚀 Splash: Resized to ${SPLASH_DIMENSIONS.width}x${SPLASH_DIMENSIONS.height}px`);
+    console.log(
+      `   🖼️  Icon: Resized to ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px`,
+    );
+    console.log(
+      `   🚀 Splash: Resized to ${SPLASH_DIMENSIONS.width}x${SPLASH_DIMENSIONS.height}px`,
+    );
 
     // Clear existing screenshots
     clearExistingScreenshots();
@@ -462,8 +472,12 @@ async function generateScreenshots() {
     console.log(
       `🖼️  Original: ${SCREENSHOT_VIEWPORTS.embed.width}x${SCREENSHOT_VIEWPORTS.embed.height}px (Screenshot)`,
     );
-    console.log(`🎯 Icon: ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px (Resized)`);
-    console.log(`🚀 Splash: ${SPLASH_DIMENSIONS.width}x${SPLASH_DIMENSIONS.height}px (Resized)`);
+    console.log(
+      `🎯 Icon: ${ICON_DIMENSIONS.width}x${ICON_DIMENSIONS.height}px (Resized)`,
+    );
+    console.log(
+      `🚀 Splash: ${SPLASH_DIMENSIONS.width}x${SPLASH_DIMENSIONS.height}px (Resized)`,
+    );
     console.log("=".repeat(50));
 
     console.log("\n⏳ Generating images with retry logic...");
@@ -491,7 +505,9 @@ async function generateScreenshots() {
       );
 
       console.log("\n🎉 Screenshot generation with resizing complete!");
-      console.log(`   📁 Original: public/images/${embedResult.result.original}`);
+      console.log(
+        `   📁 Original: public/images/${embedResult.result.original}`,
+      );
       console.log(`   📁 Icon: public/images/${embedResult.result.icon}`);
       console.log(`   📁 Splash: public/images/${embedResult.result.splash}`);
       console.log(`   ⏱️  Total time: ${totalDuration}s`);

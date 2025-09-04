@@ -2,7 +2,7 @@
 
 import "dotenv/config";
 import mime from "mime";
-import sharp from "sharp";
+import { Jimp } from "jimp";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -62,7 +62,7 @@ function generateFilename(type, prefix = "gemini") {
 }
 
 /**
- * Resize image to specified dimensions using Sharp
+ * Resize image to specified dimensions using Jimp
  * @param {Buffer} imageBuffer - The image buffer to resize
  * @param {number} width - Target width
  * @param {number} height - Target height
@@ -70,13 +70,9 @@ function generateFilename(type, prefix = "gemini") {
  */
 async function resizeImage(imageBuffer, width, height) {
   try {
-    const resizedBuffer = await sharp(imageBuffer)
-      .resize(width, height, {
-        fit: "cover",
-        position: "center",
-      })
-      .png()
-      .toBuffer();
+    const image = await Jimp.read(imageBuffer);
+    const resizedImage = image.resize({ w: width, h: height });
+    const resizedBuffer = await resizedImage.getBuffer("image/png");
 
     console.log(`🔧 Resized image to ${width}x${height}`);
     return resizedBuffer;
@@ -115,20 +111,19 @@ function saveBinaryFile(fileName, content) {
 async function resizeAndSaveImage(imageBuffer, filename, dimensions) {
   try {
     const imagesDir = join(process.cwd(), "public/images");
-    
+
     // Ensure images directory exists
     if (!existsSync(imagesDir)) {
       mkdirSync(imagesDir, { recursive: true });
     }
 
-    // Resize the image
-    const resizedBuffer = await sharp(imageBuffer)
-      .resize(dimensions.width, dimensions.height, {
-        fit: "cover",
-        position: "center",
-      })
-      .png()
-      .toBuffer();
+    // Resize the image using Jimp
+    const image = await Jimp.read(imageBuffer);
+    const resizedImage = image.resize({
+      w: dimensions.width,
+      h: dimensions.height,
+    });
+    const resizedBuffer = await resizedImage.getBuffer("image/png");
 
     const filepath = join(imagesDir, `${filename}.png`);
     writeFileSync(filepath, resizedBuffer);
@@ -157,7 +152,9 @@ function clearExistingIcons() {
 
   const files = readdirSync(imagesDir);
   const iconFiles = files.filter(
-    (file) => (file.startsWith("gemini-icon-") || file.startsWith("gemini-splash-")) && file.endsWith(".png"),
+    (file) =>
+      (file.startsWith("gemini-icon-") || file.startsWith("gemini-splash-")) &&
+      file.endsWith(".png"),
   );
 
   console.log("🗑️  Clearing existing icon and splash images...");
@@ -441,7 +438,6 @@ function sleep(seconds) {
   });
 }
 
-
 /**
  * Generate icon using OpenRouter API with retry logic
  * @param {string} prompt - The image generation prompt
@@ -522,7 +518,11 @@ async function generateIcon(prompt, retryCount = 0) {
               const filePath = join(imagesDir, fullFileName);
 
               await saveBinaryFile(filePath, resizedBuffer);
-              savedFiles.push({ filename: fullFileName, filePath, buffer: resizedBuffer });
+              savedFiles.push({
+                filename: fullFileName,
+                filePath,
+                buffer: resizedBuffer,
+              });
             }
           }
         }
@@ -573,7 +573,6 @@ async function generateIcon(prompt, retryCount = 0) {
     throw error;
   }
 }
-
 
 /**
  * Main function to generate Gemini icon
