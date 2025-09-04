@@ -271,7 +271,7 @@ function updateFarcasterConfigWithImages(iconFilename, splashFilename) {
         config.miniapp.iconUrl = `${domain}/images/${iconFilename}`;
       }
       if (splashFilename) {
-        config.miniapp.imageUrl = `${domain}/images/${splashFilename}`;
+        config.miniapp.splashImageUrl = `${domain}/images/${splashFilename}`;
       }
     }
 
